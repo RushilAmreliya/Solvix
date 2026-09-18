@@ -1,13 +1,45 @@
+"""
+NowCast Fusion — FastAPI Backend
+
+Architecture:
+    - Primary forecast:  PySTEPS optical flow (Lucas-Kanade extrapolation)
+    - Secondary (blend): Lightweight CNN for intensity correction
+    - Hazard products:   4 convective hazard maps + GeoJSON polygons
+    - Data ingestion:    POST /api/v1/ingest/frame  (from simulator)
+    - Forecast serving:  GET  /api/v1/forecast/latest
+"""
+import collections
+import logging
 import os
+
 import numpy as np
 import torch
-import torch.nn as nn
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
-app = FastAPI(title="NowCast Fusion API")
+# Engine imports (single source of truth)
+from src.engine.nowcast_model import SimpleNowcastCNN
+from src.engine import pysteps_engine, hazard_engine
 
-# Allow Streamlit Cloud to call this API
+# ─── Logging ──────────────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+)
+logger = logging.getLogger("nowcast.api")
+
+# ─── App ──────────────────────────────────────────────────────────────────────
+app = FastAPI(
+    title="NowCast Fusion API",
+    description=(
+        "Real-time convective nowcasting for North-East India (Assam Region). "
+        "Primary engine: PySTEPS optical flow. Secondary: CNN intensity correction."
+    ),
+    version="2.0.0",
+)
+
+# CORS — open for SIH demo prototype; restrict origins in production
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,80 +47,234 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ==========================================
-# 1. Re-define the Model Structure
-# ==========================================
-class SimpleNowcastCNN(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(in_channels, 32, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(64, 32, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(32, out_channels, kernel_size=3, padding=1),
-            nn.ReLU()
-        )
-    def forward(self, x):
-        return self.net(x)
+# ─── In-Memory State ──────────────────────────────────────────────────────────
+SEQ_IN      = 3         # Frames fed to PySTEPS / CNN  (3 × 30 min = 1.5 hrs)
+MAX_BUFFER  = 20        # Maximum frames held in memory
 
-# ==========================================
-# 2. Load Assets into Memory on Startup
-# ==========================================
-model = None
-dataset = None
-current_time_step = 0
-MAX_VAL = 1.0
+# Sliding window of recent frames (mm/hr, raw)
+frame_buffer: collections.deque = collections.deque(maxlen=MAX_BUFFER)
 
+cnn_model = None
+fallback_dataset: np.ndarray | None = None   # Used when buffer is empty
+MAX_VAL   = 1.0
+
+
+# ─── Request / Response Schemas ───────────────────────────────────────────────
+class FramePayload(BaseModel):
+    frame: list[list[float]]
+    simulated_time: str | None = None
+
+
+# ─── Startup ──────────────────────────────────────────────────────────────────
 @app.on_event("startup")
-def load_assets():
-    global model, dataset, MAX_VAL
+def load_assets() -> None:
+    global cnn_model, fallback_dataset, MAX_VAL
 
-    print("Loading historical data and trained model...")
-    data_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../data/assam_gpm_sample.npy'))
+    logger.info("=== NowCast Backend Starting ===")
+
+    # Load historical GPM data as fallback seed
+    data_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "../../data/assam_gpm_sample.npy")
+    )
     if os.path.exists(data_path):
-        raw_data = np.load(data_path)
-        MAX_VAL = np.max(raw_data)
-        dataset = raw_data / MAX_VAL if MAX_VAL > 0 else raw_data
-        print(f"Data loaded. Max precipitation: {MAX_VAL} mm/hr")
+        raw      = np.load(data_path)           # (T, H, W) in mm/hr
+        MAX_VAL  = float(np.max(raw)) if np.max(raw) > 0 else 1.0
+        fallback_dataset = raw
+        logger.info(
+            "Dataset loaded: shape=%s, max=%.2f mm/hr", raw.shape, MAX_VAL
+        )
+        # Pre-seed buffer with initial frames so the first API call works
+        for i in range(min(SEQ_IN, len(raw))):
+            frame_buffer.append(raw[i])
+        logger.info("Buffer pre-seeded with %d frames.", len(frame_buffer))
+    else:
+        logger.warning("Data file not found at %s. Start simulator to fill buffer.", data_path)
 
-    model_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../engine/nowcast_model.pth'))
+    # Load trained CNN model (optional enhancement)
+    model_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "../engine/nowcast_model.pth")
+    )
     if os.path.exists(model_path):
-        model = SimpleNowcastCNN(in_channels=3, out_channels=3)
-        model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
-        model.eval()
-        print("AI Model loaded successfully.")
+        cnn_model = SimpleNowcastCNN(in_channels=SEQ_IN, out_channels=SEQ_IN)
+        cnn_model.load_state_dict(torch.load(model_path, map_location="cpu"))
+        cnn_model.eval()
+        logger.info("CNN model loaded from %s.", model_path)
+    else:
+        logger.warning(
+            "CNN model not found at %s. Run src/engine/train.py first. "
+            "PySTEPS-only mode active.", model_path
+        )
 
-# ==========================================
-# 3. API Endpoints
-# ==========================================
-@app.get("/")
-def health_check():
-    return {"status": "ok", "message": "NowCast Backend Running."}
+    logger.info("=== Backend ready. ===")
 
-@app.get("/api/v1/forecast/latest")
-def get_forecast():
-    global current_time_step
 
-    if dataset is None or model is None:
-        return {"error": "Model or Data not found. Did you run the training script and commit the files?"}
+# ─── Base64 Image Helper ──────────────────────────────────────────────────────
+import io
+import base64
+from PIL import Image
+import matplotlib.pyplot as plt
 
-    if current_time_step + 3 >= len(dataset):
-        current_time_step = 0
+def array_to_base64_img(arr: np.ndarray, cmap_name: str = "jet", vmax: float = 20.0, threshold: float = 0.5) -> str:
+    """Convert a 2D precipitation or hazard array to a transparent PNG base64 string."""
+    normed = np.clip(arr / vmax, 0, 1)
+    cmap = plt.get_cmap(cmap_name)
+    rgba = cmap(normed)
+    rgba[arr < threshold, 3] = 0.0
+    rgba[arr >= threshold, 3] = 0.65
+    img = Image.fromarray((rgba * 255).astype(np.uint8))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode("utf-8")
 
-    past_frames = dataset[current_time_step : current_time_step + 3]
+# ─── Endpoints ────────────────────────────────────────────────────────────────
 
-    with torch.no_grad():
-        x_tensor = torch.FloatTensor(past_frames).unsqueeze(0)
-        prediction = model(x_tensor)
-        predicted_frames = prediction.squeeze(0).numpy()
+@app.get("/", tags=["Health"], summary="Health check")
+def health_check() -> dict:
+    return {
+        "status":       "ok",
+        "message":      "NowCast Fusion Backend v2.0 running.",
+        "buffer_size":  len(frame_buffer),
+        "cnn_loaded":   cnn_model is not None,
+    }
 
-    current_time_step += 1
+
+@app.post(
+    "/api/v1/ingest/frame",
+    tags=["Ingest"],
+    summary="Push a precipitation frame from the data simulator",
+)
+def ingest_frame(payload: FramePayload) -> dict:
+    """
+    Accept a single precipitation frame (mm/hr) from the data simulator and
+    append it to the in-memory sliding window buffer used for nowcasting.
+    """
+    try:
+        frame = np.array(payload.frame, dtype=float)
+        if frame.ndim != 2:
+            raise ValueError(f"Expected 2-D frame, got shape {frame.shape}")
+
+        frame_buffer.append(frame)
+        logger.info(
+            "Frame ingested | sim_time=%s | shape=%s | max=%.2f mm/hr | buffer=%d",
+            payload.simulated_time, frame.shape, np.max(frame), len(frame_buffer),
+        )
+        return {"status": "ok", "buffer_size": len(frame_buffer)}
+
+    except Exception as exc:
+        logger.error("Frame ingestion failed: %s", exc)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get(
+    "/api/v1/forecast/latest",
+    tags=["Forecast"],
+    summary="Get the latest nowcast + all 4 hazard products",
+)
+def get_forecast() -> dict:
+    """
+    Run the nowcasting pipeline on the most recent buffered frames and return:
+
+    - `current_rain_map`     — most recent observed precipitation (mm/hr)
+    - `forecast_30min`       — +30 min forecast  (mm/hr)
+    - `forecast_60min`       — +60 min forecast  (mm/hr)
+    - `forecast_90min`       — +90 min forecast  (mm/hr)
+    - `hazards`              — dict of 4 hazard probability maps [0–1]
+    - `cloudburst_polygons`  — GeoJSON-ready polygons for severe cloudburst zones
+    - `lightning_polygons`   — GeoJSON-ready polygons for lightning risk zones
+    - `storm_cells`          — list of city ETAs where storm arrival is imminent
+    - `buffer_size`          — number of frames currently in the buffer
+    """
+    # ── Ensure we have enough frames ─────────────────────────────────────────
+    if len(frame_buffer) < SEQ_IN:
+        if fallback_dataset is not None:
+            logger.warning(
+                "Buffer has only %d frames (need %d). Using fallback dataset seed.",
+                len(frame_buffer), SEQ_IN,
+            )
+            seed = fallback_dataset[:SEQ_IN]
+            for f in seed:
+                frame_buffer.append(f)
+        else:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"Frame buffer has {len(frame_buffer)}/{SEQ_IN} frames. "
+                    "Start the data simulator or wait for frames to arrive."
+                ),
+            )
+
+    recent_frames = np.array(list(frame_buffer)[-SEQ_IN:])   # (SEQ_IN, H, W) mm/hr
+
+    # ── Primary: PySTEPS Optical Flow Extrapolation ───────────────────────────
+    forecast_mm, motion_field = pysteps_engine.run_optical_flow(
+        recent_frames, n_leadtimes=3
+    )
+
+    # ── Optional: CNN Intensity Correction (blend 70% PySTEPS + 30% CNN) ─────
+    if cnn_model is not None:
+        try:
+            norm = recent_frames / MAX_VAL if MAX_VAL > 0 else recent_frames
+            with torch.no_grad():
+                x_t    = torch.FloatTensor(norm).unsqueeze(0)
+                cnn_fc = cnn_model(x_t).squeeze(0).numpy() * MAX_VAL
+
+            # Ensure CNN output matches PySTEPS shape (may differ if sizes change)
+            if cnn_fc.shape == forecast_mm.shape:
+                forecast_mm = 0.70 * forecast_mm + 0.30 * cnn_fc
+                logger.info("CNN enhancement applied (70/30 blend).")
+            else:
+                logger.warning(
+                    "CNN output shape %s != PySTEPS shape %s. Skipping blend.",
+                    cnn_fc.shape, forecast_mm.shape,
+                )
+        except Exception as exc:
+            logger.warning("CNN blend skipped: %s", exc)
+
+    current_frame = recent_frames[-1]            # Most recent observed frame
+    forecast_30   = forecast_mm[0]               # +30 min
+    forecast_60   = forecast_mm[1] if len(forecast_mm) > 1 else forecast_30
+    forecast_90   = forecast_mm[2] if len(forecast_mm) > 2 else forecast_30
+
+    # ── Hazard Products ───────────────────────────────────────────────────────
+    hazards = {
+        "cloudburst_risk":   hazard_engine.compute_cloudburst_risk(forecast_30).tolist(),
+        "hail_probability":  hazard_engine.compute_hail_probability(forecast_30).tolist(),
+        "lightning_density": hazard_engine.compute_lightning_density(forecast_30).tolist(),
+        "downburst_risk":    hazard_engine.compute_downburst_risk(forecast_30).tolist(),
+    }
+
+    # ── Hazard Polygons ───────────────────────────────────────────────────────
+    cloudburst_polygons = hazard_engine.get_hazard_polygons(
+        np.array(hazards["cloudburst_risk"]),  threshold=0.5
+    )
+    lightning_polygons = hazard_engine.get_hazard_polygons(
+        np.array(hazards["lightning_density"]), threshold=0.4
+    )
+
+    # ── Storm Cell ETA ────────────────────────────────────────────────────────
+    storm_cells = hazard_engine.get_storm_cells(forecast_mm, motion_field)
 
     return {
-        "current_rain_map": (past_frames[-1] * MAX_VAL).tolist(),
-        "predicted_rain_map": (predicted_frames[0] * MAX_VAL).tolist(),
-        "time_step": current_time_step
+        "current_rain_map":      current_frame.tolist(),
+        "forecast_30min":        forecast_30.tolist(),
+        "forecast_60min":        forecast_60.tolist(),
+        "forecast_90min":        forecast_90.tolist(),
+        
+        "images": {
+            "current": array_to_base64_img(current_frame, "jet", 20.0, 0.5),
+            "f30": array_to_base64_img(forecast_30, "jet", 20.0, 0.5),
+            "f60": array_to_base64_img(forecast_60, "jet", 20.0, 0.5),
+            "f90": array_to_base64_img(forecast_90, "jet", 20.0, 0.5),
+            
+            "cloudburst": array_to_base64_img(np.array(hazards["cloudburst_risk"]), "YlOrRd", 1.0, 0.1),
+            "hail": array_to_base64_img(np.array(hazards["hail_probability"]), "Blues", 1.0, 0.1),
+            "lightning": array_to_base64_img(np.array(hazards["lightning_density"]), "YlOrRd", 1.0, 0.1),
+            "downburst": array_to_base64_img(np.array(hazards["downburst_risk"]), "Purples", 1.0, 0.1)
+        },
+        
+        "hazards":               hazards,
+        "cloudburst_polygons":   cloudburst_polygons,
+        "lightning_polygons":    lightning_polygons,
+        "storm_cells":           storm_cells,
+        "buffer_size":           len(frame_buffer),
     }
