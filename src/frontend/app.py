@@ -10,7 +10,7 @@ st.set_page_config(page_title="NowCast Fusion", layout="wide")
 st.title("🌩️ NowCast Fusion: Convective Hazard Early Warning")
 st.markdown("Real-time AI nowcasting for North-East India (Assam Region).")
 
-API_BASE_URL = "http://127.0.0.1:8000"
+API_BASE_URL = "https://nowcast-backend-fjl8.onrender.com"
 
 def fetch_data():
     try:
