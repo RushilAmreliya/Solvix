@@ -92,22 +92,60 @@ export default function App() {
         </div>
       )}
 
+      {/* Atmospheric Context Cards */}
+      {data.atmospheric_context && (
+        <div className="mb-8 grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-gray-900 border border-yellow-600/40 rounded-xl p-4">
+            <p className="text-yellow-400 text-xs font-semibold uppercase tracking-wider mb-1">⚡ CAPE</p>
+            <p className="text-2xl font-bold text-white">{data.atmospheric_context.cape?.toFixed(0) ?? '--'}</p>
+            <p className="text-gray-400 text-xs">J/kg — Storm Energy</p>
+            <div className={`mt-2 text-xs font-medium ${data.atmospheric_context.cape > 2000 ? 'text-red-400' : data.atmospheric_context.cape > 1000 ? 'text-yellow-400' : 'text-green-400'}`}>
+              {data.atmospheric_context.cape > 2000 ? '🔴 Extreme convection' : data.atmospheric_context.cape > 1000 ? '🟡 Active convection' : '🟢 Stable'}
+            </div>
+          </div>
+          <div className="bg-gray-900 border border-blue-600/40 rounded-xl p-4">
+            <p className="text-blue-400 text-xs font-semibold uppercase tracking-wider mb-1">💨 Wind Speed</p>
+            <p className="text-2xl font-bold text-white">{data.atmospheric_context.wind_speed?.toFixed(1) ?? '--'}</p>
+            <p className="text-gray-400 text-xs">m/s @ 10m AGL</p>
+            <p className="text-gray-500 text-xs mt-2">Dir: {data.atmospheric_context.wind_direction?.toFixed(0) ?? '--'}°</p>
+          </div>
+          <div className="bg-gray-900 border border-cyan-600/40 rounded-xl p-4">
+            <p className="text-cyan-400 text-xs font-semibold uppercase tracking-wider mb-1">💧 Humidity</p>
+            <p className="text-2xl font-bold text-white">{data.atmospheric_context.humidity?.toFixed(0) ?? '--'}%</p>
+            <p className="text-gray-400 text-xs">2m Relative Humidity</p>
+          </div>
+          <div className="bg-gray-900 border border-purple-600/40 rounded-xl p-4">
+            <p className="text-purple-400 text-xs font-semibold uppercase tracking-wider mb-1">📡 Data Source</p>
+            <p className="text-lg font-bold text-white capitalize">{data.atmospheric_context.source ?? '--'}</p>
+            <p className="text-gray-400 text-xs">Atmospheric context</p>
+            <p className="text-gray-500 text-xs mt-2">SRTM: {data.srtm_loaded ? '✅ 1km' : '⏳ loading'}</p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
         {/* Precipitation Map */}
         <div className="bg-gray-900 rounded-xl overflow-hidden border border-gray-800 shadow-xl">
-          <div className="p-4 bg-gray-800 flex justify-between items-center">
+          <div className="p-4 bg-gray-800 flex justify-between items-center flex-wrap gap-2">
             <h2 className="text-xl font-bold">📡 Precipitation Forecast</h2>
-            <div className="flex space-x-2">
-              {['current', 'f30', 'f60', 'f90'].map((tab, i) => (
+            <div className="flex space-x-1 flex-wrap gap-1">
+              {[
+                { key: 'current', label: 'Current',  active: 'bg-blue-600',   },
+                { key: 'f30',     label: '+30 min',  active: 'bg-green-600',  },
+                { key: 'f60',     label: '+60 min',  active: 'bg-yellow-600', },
+                { key: 'f90',     label: '+90 min',  active: 'bg-orange-500', },
+                { key: 'f180',    label: '+3 hr',    active: 'bg-red-500',    },
+                { key: 'f360',    label: '+6 hr',    active: 'bg-red-800',    },
+              ].map(({ key, label, active }) => (
                 <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${
-                    activeTab === tab ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                  key={key}
+                  onClick={() => setActiveTab(key)}
+                  className={`px-2 py-1 rounded-md text-xs font-medium transition-colors ${
+                    activeTab === key ? `${active} text-white` : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
                   }`}
                 >
-                  {i === 0 ? 'Current' : `+${i * 30} min`}
+                  {label}
                 </button>
               ))}
             </div>

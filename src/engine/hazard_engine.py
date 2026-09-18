@@ -67,7 +67,7 @@ def compute_cloudburst_risk(precip_mm_hr: np.ndarray) -> np.ndarray:
     return risk.astype(float)
 
 
-def compute_hail_probability(precip_mm_hr: np.ndarray) -> np.ndarray:
+def compute_hail_probability(precip_mm_hr: np.ndarray, cape: float = 0.0) -> np.ndarray:
     """
     Hail probability map [0–1].
 
@@ -75,8 +75,13 @@ def compute_hail_probability(precip_mm_hr: np.ndarray) -> np.ndarray:
     above 25 mm/hr are strongly correlated with deep convective cells
     capable of producing hail (cf. Cecil & Zipser 2002).
 
+    Enhanced with real CAPE (Convective Available Potential Energy) from Open-Meteo:
+    - CAPE > 1000 J/kg: moderate uplift, hail more likely
+    - CAPE > 2000 J/kg: strong convective environment, multiply risk by up to 1.5×
+
     Args:
         precip_mm_hr: (H, W) precipitation in mm/hr
+        cape:         Convective Available Potential Energy in J/kg (from Open-Meteo)
     Returns:
         (H, W) float array of hail probability [0–1]
     """
@@ -84,6 +89,10 @@ def compute_hail_probability(precip_mm_hr: np.ndarray) -> np.ndarray:
         (precip_mm_hr - HAIL_THRESHOLD) / HAIL_THRESHOLD,
         0.0, 1.0,
     )
+    # CAPE enhancement: each 1000 J/kg above baseline adds 15% more probability
+    if cape > 1000.0:
+        cape_factor = 1.0 + min((cape - 1000.0) / 1000.0, 1.0) * 0.5   # max 1.5×
+        prob = np.clip(prob * cape_factor, 0.0, 1.0)
     return prob.astype(float)
 
 
@@ -108,7 +117,7 @@ def compute_lightning_density(precip_mm_hr: np.ndarray) -> np.ndarray:
     return density.astype(float)
 
 
-def compute_downburst_risk(precip_mm_hr: np.ndarray) -> np.ndarray:
+def compute_downburst_risk(precip_mm_hr: np.ndarray, wind_speed: float = 0.0) -> np.ndarray:
     """
     Downburst / microburst risk map [0–1].
 
@@ -118,8 +127,12 @@ def compute_downburst_risk(precip_mm_hr: np.ndarray) -> np.ndarray:
 
     Risk = 0.6 × intensity_component + 0.4 × gradient_component
 
+    Enhanced with real surface wind speed from Open-Meteo:
+    - wind_speed > 15 m/s adds a wind-shear contribution to downdraft risk.
+
     Args:
         precip_mm_hr: (H, W) precipitation in mm/hr
+        wind_speed:   10m wind speed in m/s (from Open-Meteo)
     Returns:
         (H, W) float array of downburst risk [0–1]
     """
@@ -134,6 +147,12 @@ def compute_downburst_risk(precip_mm_hr: np.ndarray) -> np.ndarray:
     gradient_risk  = np.clip(gradient / 5.0, 0.0, 1.0)
 
     risk = 0.6 * intensity_risk + 0.4 * gradient_risk
+
+    # Real wind shear contribution — strong surface winds amplify microburst risk
+    if wind_speed > 15.0:
+        wind_factor = min((wind_speed - 15.0) / 20.0, 0.3)   # max +30%
+        risk = np.clip(risk + wind_factor, 0.0, 1.0)
+
     return risk.astype(float)
 
 

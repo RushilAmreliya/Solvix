@@ -5,3 +5,9 @@ venv/
 env/
 .env
 .DS_Store
+
+# Credentials
+_netrc
+.netrc
+*.env
+.env.local

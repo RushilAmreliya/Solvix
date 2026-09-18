@@ -19,8 +19,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 # Engine imports (single source of truth)
-from src.engine.nowcast_model import SimpleNowcastCNN
-from src.engine import pysteps_engine, hazard_engine
+from src.engine.nowcast_model        import SimpleNowcastCNN
+from src.engine                      import pysteps_engine, hazard_engine
+from src.engine.openmeteo_engine     import get_atmospheric_context
+from src.engine.terrain_downscale    import get_or_load_srtm, downscale_to_1km
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -55,6 +57,7 @@ MAX_BUFFER  = 20        # Maximum frames held in memory
 frame_buffer: collections.deque = collections.deque(maxlen=MAX_BUFFER)
 
 cnn_model = None
+srtm_data: np.ndarray | None = None   # SRTM terrain elevation grid for 1-km downscaling
 fallback_dataset: np.ndarray | None = None   # Used when buffer is empty
 MAX_VAL   = 1.0
 
@@ -68,7 +71,7 @@ class FramePayload(BaseModel):
 # ─── Startup ──────────────────────────────────────────────────────────────────
 @app.on_event("startup")
 def load_assets() -> None:
-    global cnn_model, fallback_dataset, MAX_VAL
+    global cnn_model, fallback_dataset, MAX_VAL, srtm_data
 
     logger.info("=== NowCast Backend Starting ===")
 
@@ -107,6 +110,14 @@ def load_assets() -> None:
 
     logger.info("=== Backend ready. ===")
 
+    # Load SRTM terrain data for 1-km downscaling (non-blocking — uses cache if available)
+    try:
+        srtm_data = get_or_load_srtm()
+        logger.info("SRTM terrain data loaded: shape=%s, max=%.0f m", srtm_data.shape, srtm_data.max())
+    except Exception as exc:
+        logger.warning("SRTM load failed (flat maps will be used): %s", exc)
+        srtm_data = None
+
 
 # ─── Base64 Image Helper ──────────────────────────────────────────────────────
 import io
@@ -115,19 +126,31 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import cv2
 
-def array_to_base64_img(arr: np.ndarray, cmap_name: str = "jet", vmax: float = 20.0, threshold: float = 0.5) -> str:
+def array_to_base64_img(
+    arr: np.ndarray,
+    cmap_name: str = "jet",
+    vmax: float = 20.0,
+    threshold: float = 0.5,
+    srtm: np.ndarray | None = None,
+) -> str:
     """Convert a 2D precipitation or hazard array to a smooth transparent PNG base64 string."""
-    # Smooth the pixelated grid using bicubic interpolation (10x higher resolution) + Gaussian blur
-    h, w = arr.shape
-    smooth_arr = cv2.resize(arr, (w * 10, h * 10), interpolation=cv2.INTER_CUBIC)
-    smooth_arr = np.clip(smooth_arr, 0, None)
-    # Gentle gaussian blur to produce smooth convective radar contours
-    smooth_arr = cv2.GaussianBlur(smooth_arr, (11, 11), 0)
-    
+    # Optional: terrain downscaling to ~1 km before smoothing
+    if srtm is not None:
+        arr = downscale_to_1km(arr, srtm)
+        # Already upscaled — skip the 10x resize below, just do light smoothing
+        smooth_arr = np.clip(arr, 0, None).astype(np.float32)
+        smooth_arr = cv2.GaussianBlur(smooth_arr, (11, 11), 0)
+    else:
+        # Standard 10x bicubic upsample + blur
+        h, w = arr.shape
+        smooth_arr = cv2.resize(arr.astype(np.float32), (w * 10, h * 10), interpolation=cv2.INTER_CUBIC)
+        smooth_arr = np.clip(smooth_arr, 0, None)
+        smooth_arr = cv2.GaussianBlur(smooth_arr, (11, 11), 0)
+
     normed = np.clip(smooth_arr / vmax, 0, 1)
-    cmap = plt.get_cmap(cmap_name)
-    rgba = cmap(normed)
-    rgba[smooth_arr < threshold, 3] = 0.0
+    cmap   = plt.get_cmap(cmap_name)
+    rgba   = cmap(normed)
+    rgba[smooth_arr <  threshold, 3] = 0.0
     rgba[smooth_arr >= threshold, 3] = 0.70
     img = Image.fromarray((rgba * 255).astype(np.uint8))
     buf = io.BytesIO()
@@ -143,6 +166,7 @@ def health_check() -> dict:
         "message":      "NowCast Fusion Backend v2.0 running.",
         "buffer_size":  len(frame_buffer),
         "cnn_loaded":   cnn_model is not None,
+        "srtm_loaded":  srtm_data is not None,
     }
 
 
@@ -179,110 +203,93 @@ def ingest_frame(payload: FramePayload) -> dict:
     summary="Get the latest nowcast + all 4 hazard products",
 )
 def get_forecast() -> dict:
-    """
-    Run the nowcasting pipeline on the most recent buffered frames and return:
-
-    - `current_rain_map`     — most recent observed precipitation (mm/hr)
-    - `forecast_30min`       — +30 min forecast  (mm/hr)
-    - `forecast_60min`       — +60 min forecast  (mm/hr)
-    - `forecast_90min`       — +90 min forecast  (mm/hr)
-    - `hazards`              — dict of 4 hazard probability maps [0–1]
-    - `cloudburst_polygons`  — GeoJSON-ready polygons for severe cloudburst zones
-    - `lightning_polygons`   — GeoJSON-ready polygons for lightning risk zones
-    - `storm_cells`          — list of city ETAs where storm arrival is imminent
-    - `buffer_size`          — number of frames currently in the buffer
-    """
     # ── Ensure we have enough frames ─────────────────────────────────────────
     if len(frame_buffer) < SEQ_IN:
         if fallback_dataset is not None:
-            logger.warning(
-                "Buffer has only %d frames (need %d). Using fallback dataset seed.",
-                len(frame_buffer), SEQ_IN,
-            )
             seed = fallback_dataset[:SEQ_IN]
             for f in seed:
                 frame_buffer.append(f)
         else:
             raise HTTPException(
                 status_code=503,
-                detail=(
-                    f"Frame buffer has {len(frame_buffer)}/{SEQ_IN} frames. "
-                    "Start the data simulator or wait for frames to arrive."
-                ),
+                detail=f"Buffer has {len(frame_buffer)}/{SEQ_IN} frames. Start the simulator.",
             )
 
-    recent_frames = np.array(list(frame_buffer)[-SEQ_IN:])   # (SEQ_IN, H, W) mm/hr
+    recent_frames = np.array(list(frame_buffer)[-SEQ_IN:])   # (SEQ_IN, H, W)
 
-    # ── Primary: PySTEPS Optical Flow Extrapolation ───────────────────────────
+    # ── Atmospheric Context (Open-Meteo) ──────────────────────────────────────
+    atm_ctx = get_atmospheric_context()
+
+    # ── Primary: PySTEPS Optical Flow (+6 hr, 12 steps × 30 min) ─────────────
     forecast_mm, motion_field = pysteps_engine.run_optical_flow(
-        recent_frames, n_leadtimes=3
+        recent_frames, n_leadtimes=12
     )
 
-    # ── Optional: CNN Intensity Correction (blend 70% PySTEPS + 30% CNN) ─────
+    # ── Optional: CNN Intensity Correction (70/30 blend) ─────────────────────
     if cnn_model is not None:
         try:
-            norm = recent_frames / MAX_VAL if MAX_VAL > 0 else recent_frames
+            norm   = recent_frames / MAX_VAL if MAX_VAL > 0 else recent_frames
+            x_t    = torch.FloatTensor(norm).unsqueeze(0)
             with torch.no_grad():
-                x_t    = torch.FloatTensor(norm).unsqueeze(0)
                 cnn_fc = cnn_model(x_t).squeeze(0).numpy() * MAX_VAL
-
-            # Ensure CNN output matches PySTEPS shape (may differ if sizes change)
             if cnn_fc.shape == forecast_mm.shape:
                 forecast_mm = 0.70 * forecast_mm + 0.30 * cnn_fc
-                logger.info("CNN enhancement applied (70/30 blend).")
-            else:
-                logger.warning(
-                    "CNN output shape %s != PySTEPS shape %s. Skipping blend.",
-                    cnn_fc.shape, forecast_mm.shape,
-                )
         except Exception as exc:
             logger.warning("CNN blend skipped: %s", exc)
 
-    current_frame = recent_frames[-1]            # Most recent observed frame
-    forecast_30   = forecast_mm[0]               # +30 min
-    forecast_60   = forecast_mm[1] if len(forecast_mm) > 1 else forecast_30
-    forecast_90   = forecast_mm[2] if len(forecast_mm) > 2 else forecast_30
+    current_frame = recent_frames[-1]
+    forecast_30   = forecast_mm[0]
+    forecast_60   = forecast_mm[1]
+    forecast_90   = forecast_mm[2]
+    forecast_180  = forecast_mm[5]    # +3 hours
+    forecast_360  = forecast_mm[11]   # +6 hours
 
-    # ── Hazard Products ───────────────────────────────────────────────────────
+    # ── Hazard Products (enhanced with real CAPE + wind) ─────────────────────
     hazards = {
         "cloudburst_risk":   hazard_engine.compute_cloudburst_risk(forecast_30).tolist(),
-        "hail_probability":  hazard_engine.compute_hail_probability(forecast_30).tolist(),
+        "hail_probability":  hazard_engine.compute_hail_probability(
+                                 forecast_30, cape=atm_ctx["cape"]).tolist(),
         "lightning_density": hazard_engine.compute_lightning_density(forecast_30).tolist(),
-        "downburst_risk":    hazard_engine.compute_downburst_risk(forecast_30).tolist(),
+        "downburst_risk":    hazard_engine.compute_downburst_risk(
+                                 forecast_30, wind_speed=atm_ctx["wind_speed"]).tolist(),
     }
 
-    # ── Hazard Polygons ───────────────────────────────────────────────────────
     cloudburst_polygons = hazard_engine.get_hazard_polygons(
         np.array(hazards["cloudburst_risk"]),  threshold=0.5
     )
     lightning_polygons = hazard_engine.get_hazard_polygons(
         np.array(hazards["lightning_density"]), threshold=0.4
     )
-
-    # ── Storm Cell ETA ────────────────────────────────────────────────────────
     storm_cells = hazard_engine.get_storm_cells(forecast_mm, motion_field)
 
+    # ── Build Response ────────────────────────────────────────────────────────
     return {
-        "current_rain_map":      current_frame.tolist(),
-        "forecast_30min":        forecast_30.tolist(),
-        "forecast_60min":        forecast_60.tolist(),
-        "forecast_90min":        forecast_90.tolist(),
-        
+        "current_rain_map": current_frame.tolist(),
+        "forecast_30min":   forecast_30.tolist(),
+        "forecast_60min":   forecast_60.tolist(),
+        "forecast_90min":   forecast_90.tolist(),
+        "forecast_180min":  forecast_180.tolist(),
+        "forecast_360min":  forecast_360.tolist(),
+
         "images": {
-            "current": array_to_base64_img(current_frame, "jet", 20.0, 0.5),
-            "f30": array_to_base64_img(forecast_30, "jet", 20.0, 0.5),
-            "f60": array_to_base64_img(forecast_60, "jet", 20.0, 0.5),
-            "f90": array_to_base64_img(forecast_90, "jet", 20.0, 0.5),
-            
-            "cloudburst": array_to_base64_img(np.array(hazards["cloudburst_risk"]), "YlOrRd", 1.0, 0.1),
-            "hail": array_to_base64_img(np.array(hazards["hail_probability"]), "Blues", 1.0, 0.1),
-            "lightning": array_to_base64_img(np.array(hazards["lightning_density"]), "YlOrRd", 1.0, 0.1),
-            "downburst": array_to_base64_img(np.array(hazards["downburst_risk"]), "Purples", 1.0, 0.1)
+            # Rain maps — terrain-enhanced 1 km resolution when SRTM available
+            "current": array_to_base64_img(current_frame, "jet", MAX_VAL, 0.5, srtm=srtm_data),
+            "f30":     array_to_base64_img(forecast_30,   "jet", MAX_VAL, 0.5, srtm=srtm_data),
+            "f60":     array_to_base64_img(forecast_60,   "jet", MAX_VAL, 0.5, srtm=srtm_data),
+            "f90":     array_to_base64_img(forecast_90,   "jet", MAX_VAL, 0.5, srtm=srtm_data),
+            "f180":    array_to_base64_img(forecast_180,  "jet", MAX_VAL, 0.5, srtm=srtm_data),
+            "f360":    array_to_base64_img(forecast_360,  "jet", MAX_VAL, 0.5, srtm=srtm_data),
+            # Hazard maps (no terrain scaling — probability fields)
+            "cloudburst": array_to_base64_img(np.array(hazards["cloudburst_risk"]),  "YlOrRd", 1.0, 0.1),
+            "hail":       array_to_base64_img(np.array(hazards["hail_probability"]), "Blues",  1.0, 0.1),
+            "lightning":  array_to_base64_img(np.array(hazards["lightning_density"]),"YlOrRd", 1.0, 0.1),
+            "downburst":  array_to_base64_img(np.array(hazards["downburst_risk"]),   "Purples",1.0, 0.1),
         },
-        
-        "hazards":               hazards,
-        "cloudburst_polygons":   cloudburst_polygons,
-        "lightning_polygons":    lightning_polygons,
-        "storm_cells":           storm_cells,
-        "buffer_size":           len(frame_buffer),
+
+        "atmospheric_context": atm_ctx,
+        "hazards":             hazards,
+        "cloudburst_polygons": cloudburst_polygons,
+        "lightning_polygons":  lightning_polygons,
+        "storm_cells":         storm_cells,
+        "buffer_size":         len(frame_buffer),
     }
