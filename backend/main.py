@@ -19,10 +19,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 # Engine imports (single source of truth)
-from src.engine.nowcast_model        import SimpleNowcastCNN
-from src.engine                      import pysteps_engine, hazard_engine
-from src.engine.openmeteo_engine     import get_atmospheric_context
-from src.engine.terrain_downscale    import get_or_load_srtm, downscale_to_1km
+from backend.engine.nowcast_model        import SimpleNowcastCNN
+from backend.engine                      import pysteps_engine, hazard_engine
+from backend.engine.openmeteo_engine     import get_atmospheric_context
+from backend.engine.terrain_downscale    import get_or_load_srtm, downscale_to_1km
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -77,10 +77,10 @@ def load_assets() -> None:
 
     # Load historical precipitation data (prioritize 4km PERSIANN over 10km GPM)
     data_4km = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../../data/assam_persiann_4km.npy")
+        os.path.join(os.path.dirname(__file__), "../data/assam_persiann_4km.npy")
     )
     data_10km = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../../data/assam_gpm_sample.npy")
+        os.path.join(os.path.dirname(__file__), "../data/assam_gpm_sample.npy")
     )
     data_path = data_4km if os.path.exists(data_4km) else data_10km
 
@@ -102,7 +102,7 @@ def load_assets() -> None:
 
     # Load trained CNN model (optional enhancement)
     model_path = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../engine/nowcast_model.pth")
+        os.path.join(os.path.dirname(__file__), "engine/nowcast_model.pth")
     )
     if os.path.exists(model_path):
         cnn_model = SimpleNowcastCNN(in_channels=SEQ_IN, out_channels=SEQ_IN)
@@ -111,7 +111,7 @@ def load_assets() -> None:
         logger.info("CNN model loaded from %s.", model_path)
     else:
         logger.warning(
-            "CNN model not found at %s. Run src/engine/train.py first. "
+            "CNN model not found at %s. Run python -m backend.engine.train first. "
             "PySTEPS-only mode active.", model_path
         )
 

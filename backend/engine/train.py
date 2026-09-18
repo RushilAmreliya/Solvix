@@ -16,7 +16,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, Dataset
 
 # ── Shared model definition (no more copy-paste) ──────────────────────────────
-from src.engine.nowcast_model import SimpleNowcastCNN
+from backend.engine.nowcast_model import SimpleNowcastCNN
 
 
 # ─── Dataset ──────────────────────────────────────────────────────────────────
