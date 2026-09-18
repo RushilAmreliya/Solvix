@@ -24,11 +24,30 @@ def setup():
     print("The file is already in .gitignore.\n")
 
     username = input("Enter your NASA Earthdata username: ").strip()
-    password = getpass.getpass("Enter your NASA Earthdata password: ")
+    
+    print("\nPassword entry options:")
+    print("  [1] Open Notepad directly to paste/type safely (recommended for complex passwords)")
+    print("  [2] Type or paste directly in terminal (visible)")
+    print("  [3] Hidden input (getpass - characters will not show on screen)")
+    choice = input("Select option [1/2/3, default 1]: ").strip()
 
-    if not username or not password:
-        print("\n[ERROR] Username and password cannot be empty.")
-        sys.exit(1)
+    if choice == "2":
+        password = input("Enter your NASA Earthdata password: ").strip()
+    elif choice == "3":
+        password = getpass.getpass("Enter your NASA Earthdata password: ")
+    else:
+        # Option 1: Open notepad directly
+        print(f"\nOpening {NETRC_PATH} in Notepad...")
+        template = f"\nmachine {NASA_HOST}\nlogin {username}\npassword YOUR_PASSWORD_HERE\n"
+        if not os.path.exists(NETRC_PATH):
+            with open(NETRC_PATH, "w") as f:
+                f.write(template)
+        else:
+            with open(NETRC_PATH, "a") as f:
+                f.write(template)
+        os.system(f'notepad "{NETRC_PATH}"')
+        print(f"\n[OK] Please replace YOUR_PASSWORD_HERE in Notepad, save (Ctrl+S), and close Notepad.")
+        return
 
     # Read existing entries to avoid duplicates
     existing_lines = []
