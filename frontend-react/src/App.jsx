@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, ImageOverlay, Polygon, Tooltip } from 'react-leaflet';
+import { MapContainer, TileLayer, ImageOverlay, Polygon, Tooltip, useMap } from 'react-leaflet';
 import { CloudRain, Zap, CloudSnow, Wind, RefreshCcw } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import './index.css';
@@ -7,6 +7,34 @@ import './index.css';
 const API_URL = "http://localhost:8000/api/v1/forecast/latest";
 const BOUNDS = [[24.0, 89.8], [28.0, 96.0]];
 const MAP_CENTER = [26.0, 93.0];
+
+// Helper to auto-fit the processing bounds exactly into the map card
+function FitBounds({ bounds }) {
+  const map = useMap();
+  useEffect(() => {
+    if (map && bounds) {
+      map.fitBounds(bounds, { padding: [12, 12], animate: false });
+    }
+  }, [map, bounds]);
+  return null;
+}
+
+// Inverted polygon to dim out everything outside the processing area
+const WORLD_BOUNDS = [
+  [-90, -360],
+  [90, -360],
+  [90, 360],
+  [-90, 360]
+];
+const MASK_POSITIONS = [
+  WORLD_BOUNDS,
+  [
+    [24.0, 89.8],
+    [28.0, 89.8],
+    [28.0, 96.0],
+    [24.0, 96.0]
+  ]
+];
 
 export default function App() {
   const [data, setData] = useState(null);
@@ -85,8 +113,22 @@ export default function App() {
             </div>
           </div>
           <div className="h-[500px] w-full relative">
-            <MapContainer center={MAP_CENTER} zoom={6} scrollWheelZoom={false} className="h-full w-full bg-[#0a0a0a]" style={{ background: '#0f172a' }}>
-              <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution="&copy; OpenStreetMap & CartoDB" />
+            <MapContainer 
+              bounds={BOUNDS}
+              boundsOptions={{ padding: [12, 12] }}
+              maxBounds={BOUNDS}
+              maxBoundsViscosity={1.0}
+              scrollWheelZoom={true} 
+              className="h-full w-full bg-[#0a0a0a]" 
+              style={{ background: '#0f172a' }}
+            >
+              <FitBounds bounds={BOUNDS} />
+              {/* Using a more realistic map layout */}
+              <TileLayer 
+                url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png" 
+                attribution="&copy; OpenStreetMap & CartoDB" 
+              />
+              <Polygon positions={MASK_POSITIONS} pathOptions={{ color: 'none', fillColor: '#000', fillOpacity: 0.8 }} />
               {data.images && data.images[activeTab] && (
                 <ImageOverlay url={data.images[activeTab]} bounds={BOUNDS} opacity={1} />
               )}
@@ -113,8 +155,21 @@ export default function App() {
             </div>
           </div>
           <div className="h-[500px] w-full relative">
-            <MapContainer center={MAP_CENTER} zoom={6} scrollWheelZoom={false} className="h-full w-full bg-[#0a0a0a]" style={{ background: '#0f172a' }}>
-              <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" attribution="&copy; OpenStreetMap & CartoDB" />
+            <MapContainer 
+              bounds={BOUNDS}
+              boundsOptions={{ padding: [12, 12] }}
+              maxBounds={BOUNDS}
+              maxBoundsViscosity={1.0}
+              scrollWheelZoom={true} 
+              className="h-full w-full bg-[#0a0a0a]" 
+              style={{ background: '#0f172a' }}
+            >
+              <FitBounds bounds={BOUNDS} />
+              <TileLayer 
+                url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png" 
+                attribution="&copy; OpenStreetMap & CartoDB" 
+              />
+              <Polygon positions={MASK_POSITIONS} pathOptions={{ color: 'none', fillColor: '#000', fillOpacity: 0.8 }} />
               {data.images && data.images[activeHazard] && (
                 <ImageOverlay url={data.images[activeHazard]} bounds={BOUNDS} opacity={1} />
               )}

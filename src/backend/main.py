@@ -113,14 +113,22 @@ import io
 import base64
 from PIL import Image
 import matplotlib.pyplot as plt
+import cv2
 
 def array_to_base64_img(arr: np.ndarray, cmap_name: str = "jet", vmax: float = 20.0, threshold: float = 0.5) -> str:
-    """Convert a 2D precipitation or hazard array to a transparent PNG base64 string."""
-    normed = np.clip(arr / vmax, 0, 1)
+    """Convert a 2D precipitation or hazard array to a smooth transparent PNG base64 string."""
+    # Smooth the pixelated grid using bicubic interpolation (10x higher resolution) + Gaussian blur
+    h, w = arr.shape
+    smooth_arr = cv2.resize(arr, (w * 10, h * 10), interpolation=cv2.INTER_CUBIC)
+    smooth_arr = np.clip(smooth_arr, 0, None)
+    # Gentle gaussian blur to produce smooth convective radar contours
+    smooth_arr = cv2.GaussianBlur(smooth_arr, (11, 11), 0)
+    
+    normed = np.clip(smooth_arr / vmax, 0, 1)
     cmap = plt.get_cmap(cmap_name)
     rgba = cmap(normed)
-    rgba[arr < threshold, 3] = 0.0
-    rgba[arr >= threshold, 3] = 0.65
+    rgba[smooth_arr < threshold, 3] = 0.0
+    rgba[smooth_arr >= threshold, 3] = 0.70
     img = Image.fromarray((rgba * 255).astype(np.uint8))
     buf = io.BytesIO()
     img.save(buf, format="PNG")
