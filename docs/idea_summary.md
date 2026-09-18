@@ -1,0 +1,5 @@
+# Idea Summary
+
+**Title:** NowCast Fusion: Real-Time Convective Hazard Early Warning System
+
+Our solution is a multi-sensor data fusion and nowcasting engine that predicts severe convective weather (thunderstorms, hail, cloudbursts) with a 0–6 hour lead time at a 1–3 km resolution. By continuously ingesting Doppler Weather Radar, INSAT-3D/3DR satellite imagery, and lightning data, our system detects early convective initiation that traditional NWP models miss. We utilize highly efficient optical flow algorithms (PySTEPS) to extrapolate storm cell movement, optionally enhanced by lightweight deep learning for intensity predictions. The prototype targets high-risk convective zones in India (with a primary focus on the North-East India / Assam region). Outputs are visualized on a rapid-deployment, interactive GIS dashboard (built with Streamlit) featuring dynamic hazard polygons and countdown clocks, empowering disaster management authorities to take precise, life-saving actions within minutes.
