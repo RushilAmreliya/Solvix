@@ -75,16 +75,23 @@ def load_assets() -> None:
 
     logger.info("=== NowCast Backend Starting ===")
 
-    # Load historical GPM data as fallback seed
-    data_path = os.path.abspath(
+    # Load historical precipitation data (prioritize 4km PERSIANN over 10km GPM)
+    data_4km = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "../../data/assam_persiann_4km.npy")
+    )
+    data_10km = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "../../data/assam_gpm_sample.npy")
     )
+    data_path = data_4km if os.path.exists(data_4km) else data_10km
+
     if os.path.exists(data_path):
         raw      = np.load(data_path)           # (T, H, W) in mm/hr
         MAX_VAL  = float(np.max(raw)) if np.max(raw) > 0 else 1.0
         fallback_dataset = raw
         logger.info(
-            "Dataset loaded: shape=%s, max=%.2f mm/hr", raw.shape, MAX_VAL
+            "Dataset loaded (%s): shape=%s, max=%.2f mm/hr",
+            "4km PERSIANN" if "4km" in data_path else "10km GPM",
+            raw.shape, MAX_VAL
         )
         # Pre-seed buffer with initial frames so the first API call works
         for i in range(min(SEQ_IN, len(raw))):

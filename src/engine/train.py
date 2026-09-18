@@ -65,20 +65,24 @@ class WeatherDataset(Dataset):
 
 # ─── Training Loop ────────────────────────────────────────────────────────────
 def train_model() -> None:
-    # ── Paths ──────────────────────────────────────────────────────────────────
-    data_path  = os.path.abspath(
+    # ── Paths (Prioritize 4km PERSIANN dataset over 10km GPM) ─────────────────
+    data_4km = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "../../data/assam_persiann_4km.npy")
+    )
+    data_10km = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "../../data/assam_gpm_sample.npy")
     )
+    data_path = data_4km if os.path.exists(data_4km) else data_10km
+
     model_path = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "nowcast_model.pth")
     )
 
     if not os.path.exists(data_path):
-        print(
-            f"Error: data file not found at {data_path}\n"
-            "Run: python -m src.engine.fetch_gee_data"
-        )
+        print(f"Error: data file not found at {data_path}")
         return
+
+    print(f"[*] Training on {'4km PERSIANN-CCS' if '4km' in data_path else '10km GPM'} dataset: {data_path}")
 
     # ── Hyperparameters ────────────────────────────────────────────────────────
     SEQ_IN        = 3       # Look at past 1.5 hours
@@ -136,7 +140,7 @@ def train_model() -> None:
 
     # ── Save ───────────────────────────────────────────────────────────────────
     torch.save(model.state_dict(), model_path)
-    print(f"\n✅ Training complete! Model saved to {model_path}")
+    print(f"\n[OK] Training complete! Model saved to {model_path}")
 
 
 if __name__ == "__main__":

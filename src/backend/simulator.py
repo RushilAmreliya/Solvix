@@ -32,7 +32,7 @@ logger = logging.getLogger("nowcast.simulator")
 
 # ─── Defaults ─────────────────────────────────────────────────────────────────
 DEFAULT_BACKEND  = "http://localhost:8000"
-DEFAULT_DATA     = "data/assam_gpm_sample.npy"
+DEFAULT_DATA     = "data/assam_persiann_4km.npy" if os.path.exists("data/assam_persiann_4km.npy") else "data/assam_gpm_sample.npy"
 DEFAULT_INTERVAL = 30       # Simulated minutes between frames
 DEFAULT_SPEED    = 0.001    # 0.001 = each frame is sent every (30*60*0.001) = 1.8 seconds
 

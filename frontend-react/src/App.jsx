@@ -163,8 +163,8 @@ export default function App() {
               <FitBounds bounds={BOUNDS} />
               {/* Using a more realistic map layout */}
               <TileLayer 
-                url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png" 
-                attribution="&copy; OpenStreetMap & CartoDB" 
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" 
+                attribution="&copy; OpenStreetMap contributors" 
               />
               <Polygon positions={MASK_POSITIONS} pathOptions={{ color: 'none', fillColor: '#000', fillOpacity: 0.8 }} />
               {data.images && data.images[activeTab] && (
@@ -204,8 +204,8 @@ export default function App() {
             >
               <FitBounds bounds={BOUNDS} />
               <TileLayer 
-                url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_labels_under/{z}/{x}/{y}{r}.png" 
-                attribution="&copy; OpenStreetMap & CartoDB" 
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" 
+                attribution="&copy; OpenStreetMap contributors" 
               />
               <Polygon positions={MASK_POSITIONS} pathOptions={{ color: 'none', fillColor: '#000', fillOpacity: 0.8 }} />
               {data.images && data.images[activeHazard] && (
