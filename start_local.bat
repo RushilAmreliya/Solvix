@@ -5,8 +5,8 @@ echo   NowCast Fusion - Convective Hazard Nowcasting
 echo   Starting Local Development Stack (React + FastAPI)
 echo ===================================================
 
-echo [1/3] Starting FastAPI Backend on http://localhost:8000...
-start "NowCast Backend (Port 8000)" cmd /k "python -m uvicorn backend.main:app --reload --port 8000"
+echo [1/3] Starting FastAPI Backend on 0.0.0.0:8000...
+start "NowCast Backend (Port 8000)" cmd /k "python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000"
 
 timeout /t 3 /nobreak >nul
 
@@ -15,11 +15,12 @@ start "NowCast Simulator (60 FPS)" cmd /k "python -m backend.simulator --fps 60 
 
 timeout /t 2 /nobreak >nul
 
-echo [3/3] Starting React Dashboard on http://localhost:5173...
+echo [3/3] Starting React Dashboard on 0.0.0.0:5173...
 start "NowCast React Frontend" cmd /k "cd frontend && npm run dev"
 
 echo ===================================================
-echo   All 3 services are running!
-echo   Open your browser at: http://localhost:5173
+echo   All 3 services are running across your network!
+echo   Local access:   http://localhost:5173
+echo   Network access: http://10.69.140.44:5173
 echo ===================================================
 pause
