@@ -251,6 +251,7 @@ export default function App() {
   const [flyTarget,      setFlyTarget]      = useState(null);
   const [showLocCard,    setShowLocCard]    = useState(false);
   const [syncingRadar,   setSyncingRadar]   = useState(false);
+  const [basemapStyle,   setBasemapStyle]   = useState('dark'); // 'dark' | 'satellite' | 'streets'
 
   const wsRef = useRef(null);
 
@@ -622,8 +623,33 @@ export default function App() {
                 </span>
               ) : null}
             </div>
-            <div className="map-caveat">
-              {isRainLayer ? CONFIDENCE[activeLayer] : 'IMD threshold verified · +30 min lead'}
+            <div className="map-caveat" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', background: '#1e293b', borderRadius: 6, padding: 2, gap: 2 }}>
+                {[
+                  { id: 'dark', label: 'Dark' },
+                  { id: 'satellite', label: 'Satellite' },
+                  { id: 'streets', label: 'Streets' },
+                ].map(b => (
+                  <button
+                    key={b.id}
+                    onClick={() => setBasemapStyle(b.id)}
+                    style={{
+                      background: basemapStyle === b.id ? '#3b82f6' : 'transparent',
+                      color: basemapStyle === b.id ? '#fff' : '#94a3b8',
+                      border: 'none',
+                      borderRadius: 4,
+                      padding: '2px 8px',
+                      fontSize: 10,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'background 0.15s',
+                    }}
+                  >
+                    {b.label}
+                  </button>
+                ))}
+              </div>
+              <span>{isRainLayer ? CONFIDENCE[activeLayer] : 'IMD threshold verified · +30 min lead'}</span>
             </div>
           </div>
 
@@ -641,23 +667,48 @@ export default function App() {
               <FitBounds bounds={ASSAM_BOUNDS}/>
               {flyTarget && <FlyTo target={flyTarget} zoom={10}/>}
 
-              {/* ── Base map: CartoDB Dark (free, no API key) ── */}
-              <TileLayer
-                url="https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png"
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
-                subdomains="abcd"
-                maxZoom={19}
-              />
+              {/* ── Basemap: Clean, 100% Free, Zero Watermark Tiles ── */}
+              {basemapStyle === 'dark' && (
+                <>
+                  <TileLayer
+                    url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+                    attribution='&copy; <a href="https://www.esri.com/">Esri</a>, HERE, &copy; OpenStreetMap'
+                    maxZoom={16}
+                  />
+                  <TileLayer
+                    url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
+                    attribution=""
+                    maxZoom={16}
+                    zIndex={150}
+                    pane="shadowPane"
+                  />
+                </>
+              )}
 
-              {/* ── Labels layer on top (CartoDB, free, no key) ── */}
-              <TileLayer
-                url="https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}.png"
-                attribution=""
-                subdomains="abcd"
-                maxZoom={19}
-                zIndex={150}
-                pane="shadowPane"
-              />
+              {basemapStyle === 'satellite' && (
+                <>
+                  <TileLayer
+                    url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                    attribution='&copy; <a href="https://www.esri.com/">Esri</a>, Earthstar Geographics'
+                    maxZoom={18}
+                  />
+                  <TileLayer
+                    url="https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+                    attribution=""
+                    maxZoom={18}
+                    zIndex={150}
+                    pane="shadowPane"
+                  />
+                </>
+              )}
+
+              {basemapStyle === 'streets' && (
+                <TileLayer
+                  url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                  maxZoom={19}
+                />
+              )}
 
               {/* ── RainViewer live radar (free v3 API, no key required) ── */}
               {rvTileUrl && (
