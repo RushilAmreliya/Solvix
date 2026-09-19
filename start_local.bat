@@ -16,8 +16,22 @@ start "NowCast Simulator (60 FPS)" cmd /k "python -m backend.simulator --fps 60 
 
 timeout /t 2 /nobreak >nul
 
+if not exist "frontend\node_modules" (
+    echo [INFO] Installing frontend dependencies. This may take a minute...
+    pushd frontend
+    call npm install
+    if errorlevel 1 (
+        echo [ERROR] npm install failed. Please ensure Node.js is installed.
+        popd
+        pause
+        exit /b 1
+    )
+    popd
+)
+
 echo [3/3] Starting React Dashboard on 0.0.0.0:5173...
 start "NowCast React Frontend" cmd /k "cd frontend && npm run dev"
+
 
 echo ===================================================
 echo   All 3 services are running!
