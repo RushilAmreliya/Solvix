@@ -757,6 +757,7 @@ export default function App() {
                     key="sat-base"
                     url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                     attribution='&copy; <a href="https://www.esri.com/">Esri</a>, Earthstar Geographics'
+                    bounds={ASSAM_BOUNDS}
                     maxZoom={18}
                     maxNativeZoom={18}
                   />
@@ -764,6 +765,7 @@ export default function App() {
                     key="sat-labels"
                     url="https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
                     attribution=""
+                    bounds={ASSAM_BOUNDS}
                     maxZoom={18}
                     maxNativeZoom={18}
                     zIndex={150}
@@ -775,7 +777,7 @@ export default function App() {
               {/* ── Highlighted box boundary around Assam domain ── */}
               <Rectangle
                 bounds={ASSAM_BOUNDS}
-                pathOptions={{ color: '#38bdf8', weight: 2.5, fill: false, opacity: 0.9 }}
+                pathOptions={{ color: '#38bdf8', weight: 3, fill: false, opacity: 1.0 }}
               />
 
               {basemapStyle === 'streets' && (
@@ -783,26 +785,30 @@ export default function App() {
                   key="streets"
                   url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                  bounds={ASSAM_BOUNDS}
                   maxZoom={19}
                   maxNativeZoom={19}
                 />
               )}
 
-              {/* ── RainViewer live radar (free v3 API, no key required) ── */}
+              {/* ── RainViewer live radar (maxNativeZoom=7 stops zoom level error) ── */}
               {rvTileUrl && (
                 <TileLayer
                   key={rvTileUrl}   /* force remount when URL changes */
                   url={rvTileUrl}
                   attribution='Weather radar &copy; <a href="https://www.rainviewer.com/">RainViewer</a> (free, no API key)'
-                  opacity={0.6}
+                  bounds={ASSAM_BOUNDS}
+                  maxNativeZoom={7}
+                  maxZoom={18}
+                  opacity={0.65}
                   zIndex={200}
                 />
               )}
 
-              {/* ── Dim mask outside Assam ── */}
+              {/* ── Solid mask outside Assam box: locks visual map to just the box ── */}
               <Polygon
                 positions={MASK_POSITIONS}
-                pathOptions={{ color:'none', fillColor:'#000', fillOpacity:0.55 }}
+                pathOptions={{ color:'none', fillColor:'#0a0f1d', fillOpacity:1.0 }}
               />
 
               {/* ── Model overlay (from backend) ── */}
