@@ -683,3 +683,156 @@ html, body, #root {
   font-size: 9px !important;
 }
 .leaflet-control-attribution a { color: #64748b !important; }
+
+/* Fix Leaflet popup for dark theme */
+.leaflet-popup-content-wrapper {
+  background: #f8fafc;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+.leaflet-popup-tip { background: #f8fafc; }
+
+/* ── Locate button ─────────────────────────────────────────────────────────── */
+.locate-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: #1e3a5f;
+  border: 1px solid #2563eb66;
+  border-radius: 7px;
+  color: #60a5fa;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.locate-btn:hover { background: #1e40af33; border-color: #3b82f6; }
+.locate-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.locate-btn.locating { animation: pulse-border 1s infinite; }
+
+@keyframes pulse-border {
+  0%, 100% { border-color: #2563eb66; }
+  50%       { border-color: #60a5fa; }
+}
+
+/* ── Live badge animated dot ───────────────────────────────────────────────── */
+.live-dot-anim {
+  display: inline-block;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #60a5fa;
+  animation: pulse 1.5s infinite;
+}
+
+/* ── RainViewer sidebar info/warn ──────────────────────────────────────────── */
+.rv-info {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  color: #475569;
+  padding: 5px 6px;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  margin-top: 4px;
+}
+.rv-warn {
+  font-size: 9px;
+  color: #ca8a04;
+  background: #422006;
+  border: 1px solid #ca8a0444;
+  border-radius: 6px;
+  padding: 6px 8px;
+  line-height: 1.4;
+  margin-top: 4px;
+}
+
+/* ── Location weather card ─────────────────────────────────────────────────── */
+.loc-card-wrap {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1001;
+}
+.loc-card {
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid #2563eb55;
+  border-radius: 12px;
+  padding: 12px 14px;
+  width: 210px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.7), 0 0 0 1px #3b82f622;
+  position: relative;
+}
+.loc-card-close {
+  position: absolute;
+  top: 8px; right: 8px;
+  background: #1e293b;
+  border: none;
+  color: #64748b;
+  border-radius: 4px;
+  width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.loc-card-close:hover { color: #e2e8f0; }
+.loc-card-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+.loc-card-place {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+.loc-card-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.loc-emoji { font-size: 28px; flex-shrink: 0; }
+.loc-temp {
+  font-size: 26px;
+  font-weight: 800;
+  color: #f1f5f9;
+  line-height: 1;
+}
+.loc-condition { font-size: 11px; color: #64748b; margin-top: 2px; }
+.loc-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.loc-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: #1e293b;
+  border-radius: 6px;
+  padding: 5px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #e2e8f0;
+  text-align: center;
+}
+.loc-stat-label { font-size: 8px; font-weight: 500; color: #475569; }
+.loc-footer {
+  font-size: 8px;
+  color: #334155;
+  text-align: center;
+  border-top: 1px solid #1e293b;
+  padding-top: 6px;
+}
+
