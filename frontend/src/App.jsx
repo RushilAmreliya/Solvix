@@ -129,7 +129,7 @@ export default function App() {
 
   // ── Main Dashboard View: Fullscreen Map Viewport with Floating Panels ─────────
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#0B101D] text-slate-100 select-none">
+    <div className="relative w-screen h-screen overflow-hidden bg-[#090D16] text-slate-100 select-none font-sans">
       {/* ── 1. Main Viewport: Centered Full-Screen Leaflet Satellite Map Canvas ── */}
       <MapPanel
         data={data}
@@ -145,7 +145,7 @@ export default function App() {
       />
 
       {/* ── 2. Top Floating Navigation (Glassmorphic Bar) ── */}
-      <div className="fixed top-3 inset-x-4 z-[1000]">
+      <div className="fixed top-4 inset-x-6 z-[1000]">
         <Header
           displaySeverity={displaySeverity}
           syncingRadar={syncingRadar}
@@ -167,7 +167,6 @@ export default function App() {
       </div>
 
       {/* ── 3. Left Sidebar: Radar & Convective Control Panel ── */}
-      {/* ── 3. Left Sidebar: Radar & Convective Control Panel ── */}
       <AnimatePresence>
         {leftOpen ? (
           <Sidebar
@@ -186,10 +185,10 @@ export default function App() {
             key="btn-left-tab"
             onClick={() => setLeftOpen(true)}
             title="Expand Radar Controls"
-            className="fixed top-20 left-4 z-[900] flex items-center gap-1.5 px-3 py-2 rounded-xl backdrop-blur-xl bg-slate-900/90 border border-cyan-500/40 text-cyan-400 hover:text-cyan-300 hover:bg-slate-800 shadow-2xl shadow-black/80 transition-all font-mono-num text-xs font-bold"
+            className="fixed top-20 left-6 z-[900] flex items-center gap-1.5 px-3 py-1.5 rounded-xl backdrop-blur-xl bg-slate-900/60 border border-white/10 text-slate-300 hover:text-white hover:border-white/20 shadow-2xl shadow-black/80 transition-all text-xs font-medium"
           >
-            <Activity size={14} />
-            <span>RADAR HUD</span>
+            <Activity size={13} className="text-sky-400" />
+            <span>Radar Controls</span>
           </button>
         )}
       </AnimatePresence>
@@ -209,9 +208,9 @@ export default function App() {
             key="btn-right-tab"
             onClick={() => setRightOpen(true)}
             title="Expand Hazard Telemetry"
-            className="fixed top-20 right-4 z-[900] flex items-center gap-1.5 px-3 py-2 rounded-xl backdrop-blur-xl bg-slate-900/90 border border-red-500/40 text-red-400 hover:text-red-300 hover:bg-slate-800 shadow-2xl shadow-black/80 transition-all font-mono-num text-xs font-bold"
+            className="fixed top-20 right-6 z-[900] flex items-center gap-1.5 px-3 py-1.5 rounded-xl backdrop-blur-xl bg-slate-900/60 border border-white/10 text-slate-300 hover:text-white hover:border-white/20 shadow-2xl shadow-black/80 transition-all text-xs font-medium"
           >
-            <span>HAZARDS ({(data.alerts ?? []).length})</span>
+            <span>Hazards ({(data.alerts ?? []).length})</span>
           </button>
         )}
       </AnimatePresence>
@@ -225,3 +224,4 @@ export default function App() {
     </div>
   );
 }
+

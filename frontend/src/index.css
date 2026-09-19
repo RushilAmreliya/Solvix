@@ -1,16 +1,17 @@
 @import "tailwindcss";
 
 
-/* ── HUD Theme Variables ─────────────────────────────────────────────────── */
+/* ── Modern Premium Dark SaaS Theme Tokens ─────────────────────────────── */
 :root {
-  --bg-primary: #0B101D;
-  --bg-surface: #161F33;
-  --bg-glass: rgba(15, 23, 42, 0.75);
-  --border-hud: rgba(51, 65, 85, 0.6);
-  --accent-green: #00E676;
-  --accent-red: #FF1744;
-  --accent-cyan: #00B0FF;
-  --accent-amber: #FFD600;
+  --bg-primary: #090D16;
+  --bg-surface: #111827;
+  --bg-glass: rgba(17, 24, 39, 0.7);
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-muted: rgba(51, 65, 85, 0.4);
+  --accent-emerald: #10b981;
+  --accent-cyan: #0ea5e9;
+  --accent-rose: #f43f5e;
+  --accent-amber: #f59e0b;
 }
 
 /* ── Reset & Base ────────────────────────────────────────────────────────── */
@@ -20,8 +21,8 @@ html, body, #root {
   margin: 0; padding: 0;
   width: 100%; height: 100%;
   background: var(--bg-primary);
-  color: #e2e8f0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+  color: #f8fafc;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Geist', 'Segoe UI', system-ui, sans-serif;
   font-size: 13px;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
@@ -31,39 +32,36 @@ html, body, #root {
 .font-mono-num {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
-/* ── Futuristic HUD Glows & Glassmorphism ──────────────────────────────────── */
-.hud-panel {
-  background: rgba(22, 31, 51, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(51, 65, 85, 0.6);
-  box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.04);
+/* ── Minimalist Glassmorphism (Vercel / Linear Aesthetic) ──────────────────── */
+.glass-panel {
+  background: rgba(17, 24, 39, 0.72);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7);
 }
 
-.hud-panel-cyan {
-  border-color: rgba(0, 176, 255, 0.3);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 16px rgba(0, 176, 255, 0.12);
-}
-
-.hud-panel-alert {
-  border-color: rgba(255, 23, 68, 0.4);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 20px rgba(255, 23, 68, 0.18);
-}
-
-.hud-glass-header {
-  background: rgba(11, 16, 29, 0.8);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+.glass-panel-subtle {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 /* Fix leaflet tile background in dark mode */
 .leaflet-container {
-  background: #070b14 !important;
+  background: #090D16 !important;
   font-family: inherit !important;
+}
+
+/* Seamless map vignette blending into canvas */
+.map-vignette-overlay {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 90px 30px #090D16;
+  z-index: 450;
 }
 
 /* Hide scrollbar but keep scroll */

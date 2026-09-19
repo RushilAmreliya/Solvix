@@ -63,16 +63,19 @@ export default function MapPanel({
   const activePolygons = useMemo(() => {
     if (!data) return [];
     if (activeLayer === 'cloudburst') {
-      return (data.cloudburst_polygons ?? []).map((p) => ({ ...p, color: '#FF1744' }));
+      return (data.cloudburst_polygons ?? []).map((p) => ({ ...p, color: '#f43f5e' }));
     }
     if (activeLayer === 'lightning') {
-      return (data.lightning_polygons ?? []).map((p) => ({ ...p, color: '#FFD600' }));
+      return (data.lightning_polygons ?? []).map((p) => ({ ...p, color: '#f59e0b' }));
     }
     return [];
   }, [data, activeLayer]);
 
   return (
-    <div className="absolute inset-0 w-full h-full z-0 overflow-hidden bg-[#070b14]">
+    <div className="absolute inset-0 w-full h-full z-0 overflow-hidden bg-[#090D16]">
+      {/* ── Seamless Background Map Vignette Overlay ── */}
+      <div className="pointer-events-none absolute inset-0 z-[400] shadow-[inset_0_0_120px_50px_#090D16]" />
+
       <MapContainer
         bounds={ASSAM_BOUNDS}
         boundsOptions={{ padding: [0, 0] }}
@@ -85,19 +88,17 @@ export default function MapPanel({
         <LockToBounds bounds={ASSAM_BOUNDS} />
         {flyTarget && <FlyTo target={flyTarget} zoom={10} />}
 
-        {/* ── High-Resolution Basemaps ── */}
+        {/* ── Clean Basemaps ── */}
         {basemapStyle === 'satellite' ? (
           <>
-            {/* Esri World Imagery */}
             <TileLayer
               key="sat-base"
               url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-              attribution='&copy; Esri, Maxar, Earthstar Geographics'
+              attribution='&copy; Esri, Maxar'
               bounds={ASSAM_BOUNDS}
               maxZoom={18}
               maxNativeZoom={18}
             />
-            {/* High contrast administrative boundaries & place labels */}
             <TileLayer
               key="sat-labels"
               url="https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
@@ -107,49 +108,47 @@ export default function MapPanel({
               maxNativeZoom={18}
               zIndex={150}
               pane="shadowPane"
-              opacity={0.8}
+              opacity={0.65}
             />
           </>
         ) : (
-          /* Dark CartoDB Matter / Street Map */
           <TileLayer
             key="carto-dark"
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-            attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+            attribution='&copy; CARTO'
             bounds={ASSAM_BOUNDS}
             maxZoom={19}
             maxNativeZoom={19}
           />
         )}
 
-        {/* ── High-Contrast Convective Monitoring Domain Bounding Box (Assam) ── */}
+        {/* ── Subtle Assam Bounding Outline ── */}
         <Rectangle
           bounds={ASSAM_BOUNDS}
           pathOptions={{
-            color: '#00B0FF',
-            weight: 2.5,
+            color: '#38bdf8',
+            weight: 1.5,
             fill: false,
-            opacity: 0.9,
-            dashArray: '6, 6',
+            opacity: 0.6,
+            dashArray: '4, 4',
           }}
         />
 
-        {/* ── Outer Domain Mask ── */}
+        {/* ── Seamless Outer Mask (Deep Slate #090D16) ── */}
         <Polygon
           positions={MASK_POSITIONS}
           pathOptions={{
             color: 'none',
-            fillColor: '#070b14',
-            fillOpacity: 0.92,
+            fillColor: '#090D16',
+            fillOpacity: 0.94,
           }}
         />
 
-        {/* ── RainViewer Live Doppler Radar Sweep Overlay ── */}
+        {/* ── RainViewer Live Radar Overlay ── */}
         {rvTileUrl && (
           <TileLayer
             key={rvTileUrl}
             url={rvTileUrl}
-            attribution='Weather radar &copy; RainViewer'
             bounds={ASSAM_BOUNDS}
             maxNativeZoom={7}
             maxZoom={18}
@@ -158,86 +157,69 @@ export default function MapPanel({
           />
         )}
 
-        {/* ── NowCast Fusion Model Output (U-Net + ConvLSTM + PySTEPS) ── */}
+        {/* ── Model Forecast Overlay ── */}
         {overlayUrl && (
           <ImageOverlay
             url={overlayUrl}
             bounds={ASSAM_BOUNDS}
-            opacity={0.76}
+            opacity={0.75}
             zIndex={300}
           />
         )}
 
-        {/* ── IMD Doppler Weather Radar (DWR) Range Rings ── */}
+        {/* ── Subtle DWR Radar Coverage Circles ── */}
         {CITY_NODES.filter((c) => c.isDwr).map((dwr) => (
-          <React.Fragment key={`ring-${dwr.id}`}>
-            <Circle
-              center={dwr.coords}
-              radius={dwr.rangeMeters ?? 200000}
-              pathOptions={{
-                color: '#00E676',
-                weight: 1,
-                fill: true,
-                fillColor: '#00E676',
-                fillOpacity: 0.03,
-                dashArray: '4, 8',
-              }}
-            />
-            <Circle
-              center={dwr.coords}
-              radius={(dwr.rangeMeters ?? 200000) / 2}
-              pathOptions={{
-                color: '#00B0FF',
-                weight: 0.75,
-                fill: false,
-                dashArray: '2, 6',
-                opacity: 0.4,
-              }}
-            />
-          </React.Fragment>
+          <Circle
+            key={`ring-${dwr.id}`}
+            center={dwr.coords}
+            radius={dwr.rangeMeters ?? 200000}
+            pathOptions={{
+              color: '#10b981',
+              weight: 0.75,
+              fill: true,
+              fillColor: '#10b981',
+              fillOpacity: 0.02,
+              dashArray: '3, 6',
+              opacity: 0.35,
+            }}
+          />
         ))}
 
-        {/* ── City & Radar Station Node Markers ── */}
+        {/* ── Minimalist City & Station Markers ── */}
         {CITY_NODES.map((city) => (
           <CircleMarker
             key={`node-${city.id}`}
             center={city.coords}
-            radius={city.isDwr ? 7 : 4.5}
+            radius={city.isDwr ? 5 : 3.5}
             pathOptions={{
-              color: city.isDwr ? '#00E676' : '#00B0FF',
-              fillColor: city.isDwr ? '#00E676' : '#161F33',
+              color: city.isDwr ? '#10b981' : '#38bdf8',
+              fillColor: city.isDwr ? '#10b981' : '#0f172a',
               fillOpacity: 0.9,
-              weight: 2,
+              weight: 1.5,
             }}
           >
-            <Tooltip direction="top" offset={[0, -8]} opacity={0.95}>
-              <div className="text-[11px] font-mono-num font-bold text-slate-100 bg-slate-950/90 px-2 py-1 rounded border border-slate-700">
-                <span className={city.isDwr ? 'text-emerald-400' : 'text-cyan-400'}>
-                  [{city.code}]
+            <Tooltip direction="top" offset={[0, -6]} opacity={0.95}>
+              <div className="text-[11px] font-mono-num font-medium text-slate-200 bg-slate-900/90 px-2 py-0.5 rounded border border-white/10 shadow-lg">
+                <span className={city.isDwr ? 'text-emerald-400 font-bold' : 'text-sky-400'}>
+                  {city.code}
                 </span>{' '}
                 {city.name}
-                {city.isDwr && <span className="block text-[9px] text-slate-400 font-normal">{city.band}</span>}
               </div>
             </Tooltip>
             <Popup>
-              <div className="p-1 min-w-[190px] font-mono-num text-slate-900">
+              <div className="p-1 min-w-[170px] text-slate-900 font-sans">
                 <div className="flex items-center justify-between border-b pb-1 mb-1.5">
-                  <strong className="text-xs font-bold text-slate-900">{city.name}</strong>
-                  <span className={`text-[10px] px-1 py-0.5 rounded font-bold ${
-                    city.isDwr ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
+                  <strong className="text-xs font-semibold text-slate-900">{city.name}</strong>
+                  <span className={`text-[9px] px-1 py-0.2 rounded font-semibold ${
+                    city.isDwr ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-700'
                   }`}>
                     {city.status}
                   </span>
                 </div>
-                <div className="text-[11px] text-slate-600 space-y-1">
-                  <div>Station Code: <strong>{city.code}</strong></div>
-                  <div>Coords: {city.coords[0].toFixed(2)}°N, {city.coords[1].toFixed(2)}°E</div>
-                  <div>Elevation: {city.elevation}</div>
-                  {city.isDwr && (
-                    <div className="text-emerald-700 font-semibold pt-0.5">
-                      Operational Doppler Radar (IMD)
-                    </div>
-                  )}
+                <div className="text-xs text-slate-600 space-y-0.5 font-mono-num">
+                  <div>Station: {city.code}</div>
+                  <div>Elev: {city.elevation}</div>
+                  {city.isDwr && <div className="text-emerald-700 font-medium font-sans mt-1">IMD Doppler Radar</div>}
                 </div>
               </div>
             </Popup>
@@ -251,18 +233,18 @@ export default function MapPanel({
             positions={poly.bounds}
             pathOptions={{
               color: poly.color,
-              weight: 2,
+              weight: 1.5,
               fillColor: poly.color,
-              fillOpacity: 0.25,
+              fillOpacity: 0.22,
             }}
           >
             <Tooltip opacity={0.95}>
-              <div className="text-xs font-mono-num bg-slate-950 p-2 rounded border border-red-500/50 text-white">
-                <strong className="text-red-400 flex items-center gap-1">
-                  <ShieldAlert size={13} /> Severe Hazard Zone
-                </strong>
-                <div className="mt-1">
-                  Calculated Risk: <span className="font-bold">{(poly.risk * 100).toFixed(0)}%</span>
+              <div className="text-xs font-mono-num bg-slate-950 p-2 rounded border border-rose-500/30 text-white">
+                <div className="text-rose-400 font-semibold flex items-center gap-1">
+                  <ShieldAlert size={12} /> Severe Risk Area
+                </div>
+                <div className="text-[11px] text-slate-300 mt-0.5">
+                  Intensity: {(poly.risk * 100).toFixed(0)}%
                 </div>
               </div>
             </Tooltip>
@@ -273,25 +255,23 @@ export default function MapPanel({
         {userLoc && (
           <CircleMarker
             center={[userLoc.lat, userLoc.lng]}
-            radius={9}
+            radius={7}
             pathOptions={{
-              color: '#00E676',
-              fillColor: '#00B0FF',
+              color: '#38bdf8',
+              fillColor: '#0ea5e9',
               fillOpacity: 0.95,
-              weight: 2.5,
+              weight: 2,
             }}
           >
             <Popup>
-              <div className="p-1 min-w-[200px] text-slate-900">
-                <strong className="text-xs text-slate-900 flex items-center gap-1">
-                  <MapPin size={13} className="text-blue-600" />
+              <div className="p-1 min-w-[190px] text-slate-900">
+                <strong className="text-xs flex items-center gap-1 text-slate-900 font-semibold">
+                  <MapPin size={13} className="text-sky-600" />
                   {locAddress ?? 'Your Location'}
                 </strong>
                 {localWeather && (
-                  <div className="mt-2 text-xs text-slate-700 space-y-0.5">
-                    <div>
-                      {wmoEmoji(localWeather.weather_code)} {WMO[localWeather.weather_code] ?? ''}
-                    </div>
+                  <div className="mt-1.5 text-xs text-slate-700 space-y-0.5">
+                    <div>{wmoEmoji(localWeather.weather_code)} {WMO[localWeather.weather_code] ?? ''}</div>
                     <div>Temp: <strong>{localWeather.temperature_2m?.toFixed(1)}°C</strong></div>
                     <div>Humidity: <strong>{localWeather.relative_humidity_2m?.toFixed(0)}%</strong></div>
                     <div>Wind: <strong>{localWeather.wind_speed_10m?.toFixed(1)} m/s</strong></div>
@@ -305,7 +285,7 @@ export default function MapPanel({
 
       {/* Floating Location Weather Popup Card */}
       {showLocCard && localWeather && (
-        <div className="absolute top-20 right-4 z-[1001]">
+        <div className="absolute top-20 right-6 z-[1001]">
           <LocationWeatherCard
             weather={localWeather}
             address={locAddress}

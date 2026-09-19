@@ -1,13 +1,24 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import {
-  Layers,
   Clock,
   Radio,
   ChevronLeft,
   Database,
+  CloudRain,
+  CloudSnow,
+  Zap,
+  Wind,
 } from 'lucide-react';
-import { TIME_OFFSETS, HAZARD_LAYERS, CONFIDENCE } from '../constants/weather';
+import { TIME_OFFSETS, CONFIDENCE } from '../constants/weather';
+
+const PRODUCT_TABS = [
+  { key: 'precipitation', label: 'Precipitation', icon: CloudRain },
+  { key: 'cloudburst', label: 'Cloudburst', icon: CloudRain, color: '#f43f5e' },
+  { key: 'lightning', label: 'Lightning', icon: Zap, color: '#f59e0b' },
+  { key: 'hail', label: 'Hail', icon: CloudSnow, color: '#38bdf8' },
+  { key: 'downburst', label: 'Downburst', icon: Wind, color: '#a855f7' },
+];
 
 export default function Sidebar({
   radarType,
@@ -19,7 +30,6 @@ export default function Sidebar({
   rvDisplayTime,
   onClose,
 }) {
-  // Determine active slider step (0 to 5)
   const currentStep = TIME_OFFSETS.findIndex((t) => t.key === timeOffset);
   const activeTimeObj = TIME_OFFSETS[currentStep >= 0 ? currentStep : 0];
 
@@ -49,87 +59,66 @@ export default function Sidebar({
   return (
     <motion.aside
       key="sidebar-panel"
-      initial={{ x: -60, opacity: 0 }}
+      initial={{ x: -30, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
-      exit={{ x: -60, opacity: 0 }}
-      transition={{ duration: 0.22, ease: 'easeOut' }}
-      className="fixed top-20 left-4 bottom-16 z-[900] w-80 flex flex-col gap-3 p-3.5 rounded-2xl backdrop-blur-xl bg-slate-900/85 border border-slate-800/70 shadow-2xl shadow-black/80 text-slate-200 select-none hud-scroll overflow-y-auto"
+      exit={{ x: -30, opacity: 0 }}
+      transition={{ duration: 0.2, ease: 'easeOut' }}
+      className="fixed top-20 left-6 bottom-20 z-[900] w-80 flex flex-col gap-3.5 p-4 rounded-2xl backdrop-blur-xl bg-slate-900/60 border border-white/5 shadow-2xl shadow-black/60 text-slate-200 select-none hud-scroll overflow-y-auto"
     >
-      {/* ── Panel Header with Collapse Action ── */}
-      <div className="flex items-center justify-between pb-2 border-b border-slate-800/70">
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_8px_#00B0FF]" />
-          <span className="font-extrabold text-xs tracking-wider uppercase text-slate-100 font-mono-num">
-            Radar & Convective Control
-          </span>
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between pb-2 border-b border-white/5">
+        <div>
+          <div className="text-xs font-semibold text-white tracking-tight">Radar & Controls</div>
+          <div className="text-[10px] text-slate-500 font-mono-num">Assam Convective Grid</div>
         </div>
         <button
           onClick={onClose}
-          title="Collapse Panel"
-          className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-colors"
+          title="Close"
+          className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
         >
-          <ChevronLeft size={16} />
+          <ChevronLeft size={15} />
         </button>
       </div>
 
-      {/* ── Segmented Control: Radar & Hazard Types ── */}
+      {/* ── Shadcn/UI Style Segmented Control for Radar Products ── */}
       <div className="flex flex-col gap-1.5">
-        <div className="flex items-center justify-between text-[10px] font-bold tracking-wider uppercase text-slate-400">
-          <span className="flex items-center gap-1.5">
-            <Layers size={12} className="text-cyan-400" />
-            Radar Product
-          </span>
-          <span className="text-slate-500 font-mono-num">5 Modes</span>
-        </div>
-
-        <div className="grid grid-cols-1 gap-1">
-          {/* Precipitation Master Tab */}
+        <label className="text-[10px] uppercase font-semibold tracking-wider text-slate-400">
+          Layer Product
+        </label>
+        <div className="p-1 rounded-xl bg-slate-950/50 border border-white/5 grid grid-cols-1 gap-1">
+          {/* Main Precipitation Tab */}
           <button
             onClick={() => handleTypeSelect('precipitation')}
-            className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold border transition-all duration-150 ${
+            className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all ${
               radarType === 'precipitation'
-                ? 'bg-cyan-500/15 border-cyan-500/60 text-cyan-300 shadow-[0_0_12px_rgba(0,176,255,0.2)]'
-                : 'bg-slate-950/40 border-slate-800/60 text-slate-400 hover:text-slate-200 hover:bg-slate-850'
+                ? 'bg-white/10 text-white shadow-sm font-semibold'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
             }`}
           >
             <div className="flex items-center gap-2">
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  radarType === 'precipitation' ? 'bg-cyan-400' : 'bg-slate-600'
-                }`}
-              />
-              <span>Precipitation (IMD Z-R)</span>
+              <CloudRain size={14} className={radarType === 'precipitation' ? 'text-sky-400' : 'text-slate-500'} />
+              <span>Precipitation</span>
             </div>
-            <span className="text-[10px] font-mono-num px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800">
+            <span className="text-[10px] font-mono-num text-slate-400">
               {activeTimeObj.label}
             </span>
           </button>
 
-          {/* Convective Hazards Sub-grid */}
-          <div className="grid grid-cols-2 gap-1 mt-0.5">
-            {HAZARD_LAYERS.map(({ key, label, icon: Icon, color }) => {
-              const isSelected = radarType === key;
+          {/* Hazard Sub-row */}
+          <div className="grid grid-cols-2 gap-1 pt-0.5">
+            {PRODUCT_TABS.slice(1).map(({ key, label, icon: Icon, color }) => {
+              const isSel = radarType === key;
               return (
                 <button
                   key={key}
                   onClick={() => handleTypeSelect(key)}
-                  className={`flex items-center gap-2 px-2.5 py-2 rounded-xl text-[11px] font-semibold border transition-all duration-150 text-left ${
-                    isSelected
-                      ? 'shadow-[0_0_12px_rgba(0,0,0,0.5)]'
-                      : 'bg-slate-950/40 border-slate-800/60 text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-all ${
+                    isSel
+                      ? 'bg-white/10 text-white shadow-sm font-semibold'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.03]'
                   }`}
-                  style={
-                    isSelected
-                      ? {
-                          backgroundColor: `${color}18`,
-                          borderColor: `${color}70`,
-                          color: color,
-                          boxShadow: `0 0 10px ${color}30`,
-                        }
-                      : {}
-                  }
                 >
-                  <Icon size={13} style={{ color: isSelected ? color : '#64748b' }} className="shrink-0" />
+                  <Icon size={13} style={{ color: isSel ? color : '#64748b' }} />
                   <span className="truncate">{label}</span>
                 </button>
               );
@@ -138,30 +127,28 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* ── Time Offset Slider & Segmented Selector ── */}
-      <div className="flex flex-col gap-2 p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/70">
-        <div className="flex items-center justify-between text-[10px] font-bold tracking-wider uppercase text-slate-400">
-          <span className="flex items-center gap-1.5">
-            <Clock size={12} className="text-emerald-400" />
-            Time Offset Selector
-          </span>
-          <span className="text-emerald-400 font-mono-num font-bold">
-            {activeTimeObj.label} ({activeTimeObj.sublabel})
+      {/* ── Time Offset Selector ── */}
+      <div className="p-3 rounded-xl bg-slate-950/40 border border-white/5 flex flex-col gap-2">
+        <div className="flex items-center justify-between text-[10px] uppercase font-semibold tracking-wider text-slate-400">
+          <div className="flex items-center gap-1.5">
+            <Clock size={12} className="text-sky-400" />
+            <span>Time Forecast</span>
+          </div>
+          <span className="text-white font-mono-num font-semibold lowercase">
+            {activeTimeObj.label}
           </span>
         </div>
 
-        {/* Range Slider Track */}
-        <div className="px-1 pt-1">
-          <input
-            type="range"
-            min="0"
-            max="5"
-            step="1"
-            value={currentStep >= 0 ? currentStep : 0}
-            onChange={handleSliderChange}
-            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-          />
-        </div>
+        {/* Minimal Slider */}
+        <input
+          type="range"
+          min="0"
+          max="5"
+          step="1"
+          value={currentStep >= 0 ? currentStep : 0}
+          onChange={handleSliderChange}
+          className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-400"
+        />
 
         {/* Segmented Button Row */}
         <div className="grid grid-cols-6 gap-1 text-center">
@@ -171,10 +158,10 @@ export default function Sidebar({
               <button
                 key={t.key}
                 onClick={() => handleTimeSelect(t.key)}
-                className={`py-1.5 rounded-lg text-[10px] font-mono-num font-bold border transition-all ${
+                className={`py-1 rounded-md text-[10px] font-mono-num font-medium transition-all ${
                   isSel
-                    ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-[0_0_8px_rgba(0,176,255,0.3)]'
-                    : 'bg-slate-900/60 border-slate-800/60 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                    ? 'bg-white/15 text-white font-semibold'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
                 }`}
               >
                 {t.label}
@@ -183,99 +170,55 @@ export default function Sidebar({
           })}
         </div>
 
-        <div className="text-[10px] text-slate-400 font-mono-num leading-tight mt-0.5 px-1">
-          {CONFIDENCE[timeOffset] ?? 'Operational forecast sequence'}
+        <div className="text-[10px] text-slate-500 font-mono-num leading-tight pt-1 border-t border-white/5">
+          {CONFIDENCE[timeOffset] ?? 'Nowcast sequence'}
         </div>
       </div>
 
-      {/* ── IMD Rain Rate Color Legend Scale Gauge ── */}
-      <div className="flex flex-col gap-1.5 p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/70">
-        <div className="flex items-center justify-between text-[10px] font-bold tracking-wider uppercase text-slate-400">
-          <span>IMD Rain Rate Scale</span>
-          <span className="text-cyan-400 font-mono-num">mm/hr · dBZ</span>
+      {/* ── Minimal IMD Rain Rate Legend ── */}
+      <div className="p-3 rounded-xl bg-slate-950/40 border border-white/5 flex flex-col gap-1.5">
+        <div className="flex items-center justify-between text-[10px] uppercase font-semibold tracking-wider text-slate-400">
+          <span>IMD Rain Scale</span>
+          <span className="text-slate-500 font-mono-num">mm/hr</span>
         </div>
-
-        {/* Continuous Color Scale Bar */}
         <div
-          className="h-2.5 w-full rounded-md shadow-inner"
+          className="h-1.5 w-full rounded-full"
           style={{
             background:
-              'linear-gradient(to right, #000080 0%, #0000ff 20%, #00ffff 40%, #00ff00 60%, #ffff00 75%, #ff7f00 90%, #ff0000 100%)',
+              'linear-gradient(to right, #000080, #0000ff, #00ffff, #00ff00, #ffff00, #ff7f00, #ff0000)',
           }}
         />
-
-        {/* Gauge Ticks & Readouts */}
-        <div className="flex justify-between text-[9px] font-mono-num text-slate-400 font-medium px-0.5">
-          <div>
-            <div className="text-slate-300 font-bold">0</div>
-            <div className="text-[8px] text-slate-400">15dBZ</div>
-          </div>
-          <div>
-            <div className="text-slate-300 font-bold">5</div>
-            <div className="text-[8px] text-slate-400">30dBZ</div>
-          </div>
-          <div>
-            <div className="text-slate-300 font-bold">15</div>
-            <div className="text-[8px] text-slate-400">42dBZ</div>
-          </div>
-          <div>
-            <div className="text-slate-300 font-bold">35</div>
-            <div className="text-[8px] text-slate-400">52dBZ</div>
-          </div>
-          <div className="text-right">
-            <div className="text-red-400 font-bold">60+</div>
-            <div className="text-[8px] text-red-400">Cloudburst</div>
-          </div>
+        <div className="flex justify-between text-[9px] font-mono-num text-slate-500 pt-0.5">
+          <span>0 (Light)</span>
+          <span>15</span>
+          <span>35</span>
+          <span className="text-rose-400">60+ (Cloudburst)</span>
         </div>
       </div>
 
-      {/* ── In-Memory Frame Buffer Status Card ── */}
-      <div className="mt-auto p-3 rounded-xl bg-slate-950/70 border border-slate-800/80">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-1.5 text-[10px] font-bold tracking-wider uppercase text-slate-400">
-            <Database size={12} className="text-emerald-400" />
-            <span>{data?.source === 'live-radar' ? 'Live Radar Buffer' : 'Frame Buffer'}</span>
+      {/* ── Frame Buffer & Diagnostics (Executive Style) ── */}
+      <div className="mt-auto p-3 rounded-xl bg-slate-950/40 border border-white/5 flex flex-col gap-2 text-xs">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-slate-400 font-medium">
+            <Database size={13} className="text-slate-500" />
+            <span>Radar Cache</span>
           </div>
-          <span
-            className={`px-1.5 py-0.5 rounded text-[9px] font-mono-num font-bold ${
-              data?.source === 'live-radar'
-                ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/40'
-                : 'bg-slate-900 text-slate-400 border border-slate-800'
-            }`}
-          >
-            {data?.source === 'live-radar' ? 'REAL DWR' : 'SIMULATION'}
+          <span className="text-xs font-mono-num font-semibold text-white">
+            {data?.buffer_size ?? 0} <span className="text-slate-500 text-[10px]">/ 20</span>
           </span>
         </div>
 
-        <div className="flex items-baseline justify-between mb-1">
-          <span className="text-2xl font-black font-mono-num text-white">
-            {data?.buffer_size ?? 0}
-            <span className="text-xs font-normal text-slate-400 ml-1">/ 20</span>
-          </span>
-          <span className="text-[10px] font-mono-num text-slate-400">
-            {data?.source === 'live-radar' ? 'IMD Sweeps Active' : 'Sequential Frames'}
-          </span>
-        </div>
-
-        {/* Progress Bar */}
-        <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+        <div className="h-1 w-full bg-slate-800 rounded-full overflow-hidden">
           <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{
-              width: `${Math.min(100, ((data?.buffer_size ?? 0) / 20) * 100)}%`,
-              background:
-                data?.source === 'live-radar'
-                  ? 'linear-gradient(to right, #00E676, #00B0FF)'
-                  : 'linear-gradient(to right, #3b82f6, #00B0FF)',
-            }}
+            className="h-full bg-sky-500 rounded-full transition-all duration-300"
+            style={{ width: `${Math.min(100, ((data?.buffer_size ?? 0) / 20) * 100)}%` }}
           />
         </div>
 
-        {/* Radar Timestamp info */}
         {rvDisplayTime && (
-          <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-slate-800/60 text-[10px] font-mono-num text-slate-400">
-            <Radio size={11} className="text-emerald-400 animate-pulse" />
-            <span>Sweep Time: {rvDisplayTime}</span>
+          <div className="flex items-center gap-1.5 text-[10px] font-mono-num text-slate-500 pt-1 border-t border-white/5">
+            <Radio size={11} className="text-emerald-400" />
+            <span>Latest Sweep: {rvDisplayTime}</span>
           </div>
         )}
       </div>

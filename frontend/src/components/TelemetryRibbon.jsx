@@ -13,97 +13,76 @@ export default function TelemetryRibbon({ atm = {}, maxRain = null, _displaySeve
   const windDir = atm.wind_direction ?? 210;
   const humidity = atm.humidity ?? 86;
 
-  // Determine cape status color
-  const capeColor = cape > 2000 ? '#FF1744' : cape > 1000 ? '#FFD600' : '#00E676';
-
   return (
-    <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[850] max-w-[95vw] overflow-x-auto scrollbar-hide">
-      <div className="flex items-center gap-4 px-4 py-2 rounded-2xl backdrop-blur-xl bg-slate-900/85 border border-slate-800/75 shadow-2xl shadow-black/80 select-none">
-        {/* Telemetry Indicator */}
-        <div className="flex items-center gap-1.5 shrink-0 pr-2 border-r border-slate-800/80">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500" />
-          </span>
-          <span className="text-[10px] font-mono-num font-bold tracking-wider text-cyan-300 uppercase">
-            LIVE TELEMETRY
+    <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[850] max-w-[95vw] overflow-x-auto scrollbar-hide">
+      <div className="flex items-center gap-6 px-6 py-2 rounded-full backdrop-blur-md bg-slate-900/70 border border-white/10 shadow-2xl shadow-black/80 select-none text-slate-200">
+        {/* Status Indicator */}
+        <div className="flex items-center gap-2 shrink-0 pr-3 border-r border-white/10">
+          <span className="w-2 h-2 rounded-full bg-emerald-400" />
+          <span className="text-[11px] font-medium tracking-wide text-slate-400">
+            Assam Telemetry
           </span>
         </div>
 
-        {/* 1. CAPE Metric */}
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="p-1 rounded-lg bg-amber-950/40 text-amber-400 border border-amber-500/30">
-            <Thermometer size={13} />
-          </div>
+        {/* 1. CAPE */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <Thermometer size={14} className="text-amber-400 shrink-0" />
           <div>
-            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">CAPE Index</div>
-            <div className="text-xs font-mono-num font-extrabold text-white flex items-center gap-1">
-              <span>{cape.toFixed(0)}</span>
-              <span className="text-[10px] font-normal text-slate-400">J/kg</span>
-              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: capeColor }} />
+            <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">CAPE</div>
+            <div className="text-sm font-semibold font-mono-num text-white leading-tight">
+              {cape.toFixed(0)} <span className="text-[10px] font-normal text-slate-400">J/kg</span>
             </div>
           </div>
         </div>
 
-        <span className="h-4 w-px bg-slate-800 shrink-0" />
+        <span className="h-4 w-px bg-white/10 shrink-0" />
 
-        {/* 2. Wind Metric */}
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="p-1 rounded-lg bg-cyan-950/40 text-cyan-400 border border-cyan-500/30">
-            <Wind size={13} />
-          </div>
+        {/* 2. Wind */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <Wind size={14} className="text-sky-400 shrink-0" />
           <div>
-            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Surface Wind</div>
-            <div className="text-xs font-mono-num font-extrabold text-white flex items-center gap-1">
-              <span>{windSpeed.toFixed(1)}</span>
-              <span className="text-[10px] font-normal text-slate-400">m/s</span>
-              <span className="text-[10px] text-cyan-300 font-semibold">{windDir.toFixed(0)}°</span>
+            <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Wind 10m</div>
+            <div className="text-sm font-semibold font-mono-num text-white leading-tight">
+              {windSpeed.toFixed(1)} <span className="text-[10px] font-normal text-slate-400">m/s</span>{' '}
+              <span className="text-[10px] text-slate-400 font-mono-num">({windDir.toFixed(0)}°)</span>
             </div>
           </div>
         </div>
 
-        <span className="h-4 w-px bg-slate-800 shrink-0" />
+        <span className="h-4 w-px bg-white/10 shrink-0" />
 
-        {/* 3. Relative Humidity */}
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="p-1 rounded-lg bg-blue-950/40 text-blue-400 border border-blue-500/30">
-            <Droplets size={13} />
-          </div>
+        {/* 3. Humidity */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <Droplets size={14} className="text-blue-400 shrink-0" />
           <div>
-            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Moisture Column</div>
-            <div className="text-xs font-mono-num font-extrabold text-white flex items-center gap-1">
-              <span>{humidity.toFixed(0)}%</span>
-              <span className="text-[10px] text-slate-400 font-normal">RH</span>
+            <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Humidity</div>
+            <div className="text-sm font-semibold font-mono-num text-white leading-tight">
+              {humidity.toFixed(0)}%
             </div>
           </div>
         </div>
 
-        <span className="h-4 w-px bg-slate-800 shrink-0" />
+        <span className="h-4 w-px bg-white/10 shrink-0" />
 
-        {/* 4. Peak Rain / Radar Reflectivity */}
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="p-1 rounded-lg bg-emerald-950/40 text-emerald-400 border border-emerald-500/30">
-            <CloudRain size={13} />
-          </div>
+        {/* 4. Peak Rain */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <CloudRain size={14} className="text-emerald-400 shrink-0" />
           <div>
-            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Peak Intensity</div>
-            <div className="text-xs font-mono-num font-extrabold text-white flex items-center gap-1">
-              <span>{maxRain ? `${maxRain.toFixed(1)} mm/h` : '18.4 mm/h'}</span>
-              <span className="text-[10px] text-emerald-400 font-semibold">44 dBZ</span>
+            <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">Peak Rate</div>
+            <div className="text-sm font-semibold font-mono-num text-white leading-tight">
+              {maxRain ? `${maxRain.toFixed(1)} mm/h` : '18.4 mm/h'}
             </div>
           </div>
         </div>
 
-        <span className="h-4 w-px bg-slate-800 shrink-0" />
+        <span className="h-4 w-px bg-white/10 shrink-0" />
 
-        {/* 5. Model Architecture & Status */}
-        <div className="hidden sm:flex items-center gap-2 shrink-0">
-          <div className="p-1 rounded-lg bg-purple-950/40 text-purple-400 border border-purple-500/30">
-            <Cpu size={13} />
-          </div>
+        {/* 5. AI Core Tag */}
+        <div className="hidden md:flex items-center gap-2 shrink-0">
+          <Cpu size={14} className="text-indigo-400 shrink-0" />
           <div>
-            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400">AI Core</div>
-            <div className="text-xs font-mono-num font-extrabold text-purple-300">
+            <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold">AI Engine</div>
+            <div className="text-xs font-semibold text-slate-300">
               U-Net + ConvLSTM
             </div>
           </div>
