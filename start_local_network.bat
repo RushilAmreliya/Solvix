@@ -63,7 +63,7 @@ echo  This computer: http://localhost:5173
 echo  Other devices: http://%LAN_IP%:5173
 echo  Backend API:   http://%LAN_IP%:8000/docs
 echo.
-echo  Keep all three command windows open while using Solvix.
+echo  Keep both command windows open while using Solvix.
 echo  Both devices must be connected to the same Wi-Fi/LAN.
 echo ============================================================
 echo.
@@ -72,13 +72,12 @@ start "Solvix Backend - port 8000" cmd /k "cd /d "%~dp0" && python -m uvicorn ba
 
 timeout /t 3 /nobreak >nul
 
-start "Solvix Demo Simulator" cmd /k "cd /d "%~dp0" && python -m backend.simulator --source satellite --fps 60 --loop"
-
 start "Solvix Frontend - port 5173" cmd /k "cd /d "%~dp0frontend" && set VITE_API_URL=http://%LAN_IP%:8000 && call npm run dev -- --host 0.0.0.0 --port 5173"
 
 timeout /t 3 /nobreak >nul
 
 start "Solvix Dashboard" "http://localhost:5173"
+
 
 echo.
 echo [READY] Open this URL on another device:

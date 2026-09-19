@@ -69,50 +69,42 @@ async def lifespan(app: FastAPI):
 
     logger.info("=== NowCast Backend Starting (Lifespan) ===")
 
-    # Load historical precipitation data (prioritize 4km PERSIANN over 10km GPM)
-    data_path = settings.data_4km_path if os.path.exists(settings.data_4km_path) else settings.data_10km_path
+    # 1. Connect to Real Live Doppler Radar Feed as primary source
+    logger.info("Fetching real-time live radar feed (RainViewer composite)...")
+    live_seeded = False
+    try:
+        live_sync = live_radar_engine.sync_live_radar_into_buffer(
+            frame_buffer, min_frames=settings.SEQ_IN, force_refresh=True
+        )
+        if live_sync.get("status") in ("seeded", "updated") and len(frame_buffer) >= settings.SEQ_IN:
+            live_seeded = True
+            max_val_live = float(live_sync.get("max_rain_mm_hr", 50.0))
+            MAX_VAL = max(max_val_live, 50.0)
+            logger.info(
+                "✅ LIVE RADAR CONNECTED: %d sweeps seeded, latest ts=%s, peak=%.1f mm/hr",
+                len(frame_buffer),
+                live_sync.get("timestamp"),
+                max_val_live,
+            )
+    except Exception as exc:
+        logger.warning("Live radar connection attempt failed (%s). Checking offline fallback...", exc)
 
+    # 2. Offline / Fallback Dataset (used only if live radar is unreachable)
+    data_path = settings.data_4km_path if os.path.exists(settings.data_4km_path) else settings.data_10km_path
     if os.path.exists(data_path):
         raw = np.load(data_path)  # (T, H, W) in mm/hr
-        MAX_VAL = float(np.max(raw)) if np.max(raw) > 0 else 1.0
         fallback_dataset = raw
-        logger.info(
-            "Dataset loaded (%s): shape=%s, max=%.2f mm/hr",
-            "4km PERSIANN" if "4km" in data_path else "10km GPM",
-            raw.shape,
-            MAX_VAL,
-        )
-        # Instantly pre-seed buffer with historical data so backend is ready immediately
-        for i in range(min(settings.SEQ_IN, len(raw))):
-            frame_buffer.append(raw[i])
-        logger.info("Buffer pre-seeded with %d historical frames (instant start).", len(frame_buffer))
-
-        # Then upgrade to live radar in background (non-blocking, ~3s network call)
-        def _async_live_seed():
-            try:
-                live_sync = live_radar_engine.sync_live_radar_into_buffer(
-                    frame_buffer, min_frames=settings.SEQ_IN, force_refresh=True
-                )
-                logger.info("Background live radar seed complete: %s", live_sync)
-            except Exception as exc:
-                logger.warning("Background live radar seed failed (%s); historical data in use.", exc)
-
-        import threading
-        threading.Thread(target=_async_live_seed, daemon=True, name="live-radar-seed").start()
-        logger.info("Live radar seed started in background — backend ready immediately.")
-    else:
-        logger.warning("Data file not found at %s. Attempting live radar seed in background.", data_path)
-
-        def _async_live_seed_only():
-            try:
-                live_radar_engine.sync_live_radar_into_buffer(
-                    frame_buffer, min_frames=settings.SEQ_IN, force_refresh=True
-                )
-            except Exception as exc:
-                logger.warning("Live radar seed failed: %s", exc)
-
-        import threading
-        threading.Thread(target=_async_live_seed_only, daemon=True, name="live-radar-seed").start()
+        if not live_seeded:
+            MAX_VAL = float(np.max(raw)) if np.max(raw) > 0 else 1.0
+            for i in range(min(settings.SEQ_IN, len(raw))):
+                frame_buffer.append(raw[i])
+            logger.info(
+                "⚠️ Offline Fallback Active: Buffer seeded with %d historical frames from %s",
+                len(frame_buffer),
+                os.path.basename(data_path),
+            )
+    elif not live_seeded:
+        logger.warning("Neither live radar nor historical dataset could be loaded into buffer.")
 
     # Load trained U-Net / CNN model
     model_path = settings.MODEL_PATH
