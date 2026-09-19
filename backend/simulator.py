@@ -24,6 +24,8 @@ from datetime import datetime, timedelta
 import numpy as np
 import requests
 
+from backend.engine import radar_loader
+
 # ─── Logging ──────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -141,11 +143,81 @@ def run_simulator(
             break
 
 
+def run_radar_simulator(
+    backend_url: str,
+    radar_site: str,
+    interval_minutes: int,
+    fps: float,
+    loop: bool,
+    n_sweeps: int = 40,
+) -> None:
+    """Stream simulated Doppler Weather Radar (DWR) sweeps to the backend."""
+    logger.info("Initializing Doppler Weather Radar stream for site '%s'...", radar_site)
+    real_wait_s = 1.0 / fps if fps > 0 else 1.0
+    ingest_url = f"{backend_url}/api/v1/ingest/radar-sweep"
+
+    try:
+        health = requests.get(f"{backend_url}/", timeout=5)
+        logger.info("Backend status: %s", health.json().get("message", "ok"))
+    except Exception as exc:
+        logger.error("Cannot reach backend at %s: %s", backend_url, exc)
+        return
+
+    sim_time = datetime(2023, 5, 15, 12, 0, 0)
+
+    while True:
+        logger.info("─── Starting radar sweep simulation (%d volume scans) ───", n_sweeps)
+        for s in range(n_sweeps):
+            dbz, vel = radar_loader.generate_synthetic_dwr_sweep(n_az=360, n_gates=500, has_squall_line=True)
+            shift = (s * 3) % 360
+            dbz = np.roll(dbz, shift, axis=0)
+            vel = np.roll(vel, shift, axis=0)
+
+            ts_str = sim_time.strftime("%Y-%m-%d %H:%M")
+            payload = {
+                "reflectivity_dbz": dbz.tolist(),
+                "velocity_mps": vel.tolist(),
+                "radar_site": radar_site,
+                "max_range_km": 250.0,
+                "simulated_time": ts_str,
+            }
+
+            try:
+                resp = requests.post(ingest_url, json=payload, timeout=25)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    logger.info(
+                        "[RADAR %02d/%02d] %s | site=%s | max_rain=%.1f mm/hr | microburst=%s | buffer=%s",
+                        s + 1, n_sweeps, ts_str, radar_site,
+                        data.get("max_rain_mm_hr", 0),
+                        data.get("shear_info", {}).get("microburst_detected", False),
+                        data.get("buffer_size", "?"),
+                    )
+                else:
+                    logger.warning("[RADAR %02d/%02d] Backend returned HTTP %d: %s", s + 1, n_sweeps, resp.status_code, resp.text[:150])
+            except Exception as exc:
+                logger.error("Error streaming radar sweep %d: %s", s + 1, exc)
+
+            sim_time += timedelta(minutes=interval_minutes)
+            time.sleep(real_wait_s)
+
+        if loop:
+            logger.info("Radar stream cycle complete. Looping back to start.")
+            sim_time = datetime(2023, 5, 15, 12, 0, 0)
+        else:
+            logger.info("Radar stream complete.")
+            break
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="NowCast Fusion — Historical Data Simulator",
+        description="NowCast Fusion — Historical & Radar Data Simulator",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
+    parser.add_argument("--source",   choices=["satellite", "radar"], default="satellite",
+                        help="Data stream source: 'satellite' or 'radar'")
+    parser.add_argument("--radar-site", default="Guwahati", choices=list(radar_loader.IMD_DWR_SITES.keys()),
+                        help="IMD Doppler Weather Radar site (used if --source radar)")
     parser.add_argument("--backend",  default=DEFAULT_BACKEND,
                         help="Base URL of the FastAPI backend")
     parser.add_argument("--data",     default=DEFAULT_DATA,
@@ -159,7 +231,10 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
-        run_simulator(args.backend, args.data, args.interval, args.fps, args.loop)
+        if args.source == "radar":
+            run_radar_simulator(args.backend, args.radar_site, args.interval, args.fps, args.loop)
+        else:
+            run_simulator(args.backend, args.data, args.interval, args.fps, args.loop)
     except KeyboardInterrupt:
         logger.info("Simulator stopped by user.")
 

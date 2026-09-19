@@ -11,3 +11,6 @@ _netrc
 .netrc
 *.env
 .env.local
+
+# Intermediate data chunks
+data/*_chunk_*.npy

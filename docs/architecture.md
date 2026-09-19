@@ -1,68 +1,85 @@
 # System Architecture
 
-The NowCast Fusion system is designed as a modular pipeline to handle real-time data ingestion, processing, nowcasting inference, and interactive visualization.
+The NowCast Fusion system is designed as a modular, real-time pipeline handling multi-source meteorological data ingestion, physical and deep learning inference, and interactive GIS visualization.
 
 ## High-Level Architecture
 
 ```mermaid
 flowchart TD
     subgraph Data Sources
-        R(Doppler Weather Radar)
-        S(INSAT-3D/3DR Satellite)
-        L(Lightning Network Data)
+        P[NASA GPM IMERG / PERSIANN 4km<br/>Implemented Feed]
+        OM[Open-Meteo API<br/>CAPE, Wind & Humidity]
+        SRTM[SRTM 90m Digital Elevation<br/>Topography Grid]
+        R[(Doppler Weather Radar<br/>Planned Phase 2)]
+        S[(INSAT-3D/3DR Satellite<br/>Planned Phase 2)]
     end
 
     subgraph Data Ingestion & Preprocessing
-        DI[FastAPI Data Ingestion API]
-        QC[Quality Control & Filtering]
-        AG[Spatial Alignment & Gridding]
+        DI[FastAPI Data Ingestion API<br/>+ Simulator Stream]
+        QC[Sliding Buffer & Quality Control]
+        TD[SRTM Orographic Downscaling<br/>to 1 km Resolution]
     end
 
     subgraph Nowcasting Engine
-        FE[Feature Extraction]
-        OF[Optical Flow via PySTEPS<br/>Primary Engine]
-        DL[Lightweight Deep Learning<br/>Enhancement]
+        OF[Optical Flow via PySTEPS<br/>Lucas-Kanade Log-dBR<br/>Primary Engine]
+        UN[U-Net Spatiotemporal Network<br/>Skip Connections<br/>30% Intensity Blend]
     end
 
     subgraph Hazard Products Module
-        LSD[Lightning Strike Density]
-        HP[Hail Probability]
-        DV[Downburst Velocity]
-        CT[Cloudburst Thresholds]
+        CT[Cloudburst Thresholds<br/>IMD: 50 mm/hr]
+        HP[Hail Probability<br/>Scaled by Live CAPE]
+        DV[Downburst / Microburst Risk<br/>Spatial Gradient + Wind Shear]
+        LSD[Lightning Density Index<br/>Convective Core Proxy]
+        POLY[GeoJSON Polygon Extraction<br/>Connected Component Labeling]
     end
 
-    subgraph Frontend / Dashboard
-        GIS[Streamlit + Folium/Leafmap]
-        UI[Alerts & Countdown Clocks]
+    subgraph Frontend / Dashboards
+        WS[FastAPI WebSocket Broadcast<br/>ws://localhost:8000/ws/forecast]
+        REACT[React 19 + Leaflet Dashboard<br/>60FPS Interactive GIS + Legends]
+        ST[Streamlit GIS Dashboard<br/>Rapid Prototyping Backup]
     end
 
-    R --> DI
-    S --> DI
-    L --> DI
+    P --> DI
+    OM --> HP & DV
+    SRTM --> TD
+    R -.-> DI
+    S -.-> DI
     DI --> QC
-    QC --> AG
-    AG --> FE
-    FE --> OF
-    FE -.-> DL
-    OF --> LSD & HP & DV & CT
-    DL -.-> LSD & HP & DV & CT
-    LSD --> GIS
-    HP --> GIS
-    DV --> GIS
-    CT --> GIS
-    GIS --> UI
+    QC --> OF & UN
+    OF --> CT & HP & DV & LSD
+    UN --> CT & HP & DV & LSD
+    CT & HP & DV & LSD --> POLY
+    POLY & OF & TD --> WS
+    WS --> REACT
+    DI --> ST
 ```
 
 ## Module Breakdown
 
-1. **Ingestion & Preprocessing:** Fetches raw data (or simulated historical data) via APIs, applies quality control to remove clutter, and aligns multimodal data onto a common 1–3 km grid over the target region (North-East India / Assam).
-2. **Nowcasting Engine:**
-   - *Primary (Optical Flow):* Utilizes PySTEPS for fast, reliable kinematic tracking and extrapolation of radar/satellite fields for the +1 to +2 hour timeframe.
-   - *Enhancement (Deep Learning):* A lightweight sequence-to-sequence model to capture non-linear growth for extended lead times, integrated as resources permit.
-3. **Hazard Products:** Applies established meteorological thresholds and empirical algorithms to the engine's output to classify specific hazards (e.g., high reflectivity paired with sub-zero thermal data indicates hail).
-4. **Dashboard:** A Python-based interactive GIS dashboard using Streamlit and Folium/Leafmap. This enables rapid iteration and seamless integration with the Python data science backend, rendering geospatial hazard products and real-time alerts.
+1. **Ingestion & Preprocessing:**
+   - Ingests high-resolution satellite precipitation frames via REST or replayed historical squall lines via the event simulator.
+   - Maintains an in-memory sliding buffer of the latest radar/satellite frames.
+   - Downscales precipitation grids to ~1 km using SRTM elevation profiles to account for orographic lift along the Himalayas and Meghalaya plateau.
 
-## Technology Choices
-- **Backend & ML Pipeline:** Python (FastAPI, PySTEPS, PyTorch).
-- **Dashboard:** Streamlit (Primary for rapid prototyping).
-- **Database:** PostgreSQL with PostGIS (for spatial querying and alert zones).
+2. **Nowcasting Engine (Hybrid Multi-Source):**
+   - *Primary (Optical Flow):* Uses PySTEPS Lucas-Kanade optical flow in logarithmic dBR space to advect convective cells forward up to +6 hours.
+   - *Secondary (Deep Learning):* A 7-stage U-Net (`UNetNowcast`) with encoder-decoder skip connections captures non-linear convective growth/decay, blended at 30% with the advection field for the +30 to +90 min window.
+
+3. **Hazard Products Engine:**
+   - **Cloudburst Risk:** Calibrated against the IMD standard (≥100 mm in 3 hours).
+   - **Hail Probability:** Scaled using real-time atmospheric instability (CAPE > 1000 J/kg from Open-Meteo).
+   - **Downburst Risk:** Combines instantaneous precipitation intensity, sharp spatial gradient, and 10m surface wind shear.
+   - **Lightning Density:** Convective core intensity proxy (>10 mm/hr) indicating cloud-to-ground electrical discharge.
+   - **GeoJSON Extraction:** Generates vector alert polygons with centroids for emergency management.
+
+4. **Frontend & Visualization:**
+   - **React 19 + Leaflet Dashboard:** High-performance dashboard with continuous WebSocket updates, interactive layer overlays, city ETA countdown cards, and meteorological color scale legends.
+   - **Streamlit App:** Python-native GIS dashboard for exploratory data analysis.
+
+## Technology Stack
+
+- **Backend:** Python 3.14, FastAPI, Uvicorn, Pydantic v2 Settings.
+- **Meteorology & CV:** PySTEPS, OpenCV, SciPy, MetPy, Rasterio, Open-Meteo API.
+- **Deep Learning:** PyTorch (U-Net with Batch Normalization & Skip Connections).
+- **Frontend:** React 19, Vite, Leaflet, Tailwind CSS, Lucide Icons.
+- **Testing:** Pytest, HTTPX, FastAPI TestClient.

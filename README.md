@@ -1,109 +1,144 @@
 # Convective Scale Nowcasting System (SIH26084)
 
-A real-time, multi-source data fusion Nowcasting System for thunderstorms, hail, and cloudbursts.  
-Developed for **Smart India Hackathon 2024** — Problem Statement SIH26084.
+A real-time, multi-source data fusion Nowcasting System for thunderstorms, hail, downbursts, and cloudbursts.  
+Developed for **Smart India Hackathon** — Problem Statement SIH26084.
 
 ---
 
-## Architecture
+## Architecture Overview
 
 ```
-Data Simulator ──POST──▶ FastAPI Backend ──▶ PySTEPS Optical Flow (Primary)
-                                          └──▶ CNN Enhancement   (Secondary, 30% blend)
-                                          └──▶ Hazard Engine     (4 hazard products)
-                                          └──▶ Streamlit Dashboard (GIS + Alerts)
+Data Simulator ──POST──▶ FastAPI Backend (Lifespan + WS) ──▶ PySTEPS Optical Flow (Primary)
+                                                        └──▶ U-Net Enhancement (30% blend)
+                                                        └──▶ Hazard Engine (4 IMD Products)
+                                                        └──▶ SRTM 1km Orographic Downscaling
+                                                        └──▶ React 19 Dashboard (60FPS + WebSocket)
+                                                        └──▶ Streamlit Dashboard (Folium GIS)
 ```
 
 ## Project Structure
 
 ```text
 .
-├── docs/                        # System design, architecture, roadmap
-├── data/
-│   ├── README.md                # Data format documentation
-│   └── assam_gpm_sample.npy     # NASA GPM IMERG historical data (Assam, May 2023)
-├── src/
-│   ├── backend/
-│   │   ├── main.py              # FastAPI backend (PySTEPS + CNN + hazard serving)
-│   │   └── simulator.py         # Historical data replay simulator (POSTs frames)
+├── docs/                        # System architecture, scientific scope, data sources
+├── data/                        # Sample satellite cubes (4km PERSIANN / 10km GPM)
+│   ├── assam_persiann_4km.npy
+│   └── assam_gpm_sample.npy
+├── backend/
+│   ├── main.py                  # FastAPI REST + WebSocket backend
+│   ├── settings.py              # Pydantic BaseSettings & .env management
+│   ├── simulator.py             # Historical event stream simulator
 │   └── engine/
-│       ├── nowcast_model.py     # Shared CNN model definition
-│       ├── pysteps_engine.py    # PySTEPS optical flow wrapper (PRIMARY ENGINE)
-│       ├── hazard_engine.py     # 4 hazard product functions + polygon generator
-│       ├── fetch_gee_data.py    # NASA GPM data acquisition via Google Earth Engine
-│       └── train.py             # CNN model training script
-│   └── frontend/
-│       └── app.py               # Streamlit GIS dashboard
-├── requirements.txt
-├── Procfile                     # Render deployment config
-└── README.md
+│       ├── nowcast_model.py     # UNetNowcast deep learning architecture
+│       ├── pysteps_engine.py    # PySTEPS Lucas-Kanade optical flow extrapolation
+│       ├── hazard_engine.py     # 4 convective hazard algorithms + GeoJSON polygons
+│       ├── rendering.py         # Transparent geospatial PNG map rendering
+│       ├── openmeteo_engine.py  # Real-time CAPE & wind thermodynamic context
+│       ├── terrain_downscale.py # SRTM 90m DEM downscaling to 1 km
+│       └── train.py             # U-Net model training script with CSI/ETS metrics
+├── frontend/                    # Modern React 19 + Vite + Leaflet dashboard
+│   ├── src/
+│   │   ├── App.jsx              # Real-time WebSocket + Leaflet GIS UI
+│   │   └── index.css            # Tailwind styles
+│   └── package.json
+├── tests/                       # Complete pytest unit and integration test suite
+│   ├── test_hazard_engine.py    # IMD threshold & proxy tests
+│   ├── test_pysteps_engine.py   # Unit conversion & persistence fallback tests
+│   └── test_model_and_api.py    # U-Net forward pass, CSI/ETS, and API tests
+├── .env.example                 # Backend environment variable template
+├── requirements.txt             # Python dependencies
+└── Procfile                     # Deployment configuration
 ```
 
 ---
 
-## How to Run (Full Demo)
+## Scientific Foundations & Lead Time Skill
 
-### 1. Install Dependencies
+- **Lead times +30 to +90 min (Operational Skill):** High forecast skill achieved via PySTEPS Lucas-Kanade optical flow in logarithmic dBR reflectivity space, augmented with a 30% blend from `UNetNowcast` for intensity evolution.
+- **Lead times +3 hr to +6 hr (Kinematic Trend Outlook):** Available in the dashboard for broad advection and synoptic awareness. *Caveat: Kinematic extrapolation skill degrades beyond 2 hours due to convective initiation and cell dissipation.*
+- **Thermodynamic Adjustments:** Live CAPE (Convective Available Potential Energy) and 10m wind shear from Open-Meteo dynamically adjust hail probability and microburst/downburst risks.
+- **Orographic Downscaling:** SRTM 90m digital elevation model enhances precipitation fields over Assam's complex mountain topography at ~1 km resolution.
+
+---
+
+## How to Run
+
+### 1. Install Python Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. (First time) Fetch Data
+### 2. Configure Environment (Optional)
 ```bash
-python -m src.engine.fetch_gee_data
-```
-> Requires a Google Earth Engine account. The pre-fetched `assam_gpm_sample.npy` is included for immediate use.
-
-### 3. (First time) Train the CNN
-```bash
-python -m src.engine.train
-```
-> The pre-trained `nowcast_model.pth` is included. Re-run only if you change the architecture.
-
-### 4. Start the Backend (Terminal 1)
-```bash
-uvicorn src.backend.main:app --reload
+cp .env.example .env
 ```
 
-### 5. Start the Data Simulator (Terminal 2)
+### 3. Run Automated Tests
+Verify all 15 scientific and API tests pass:
 ```bash
-# Demo mode: 20× faster than real-time, loops continuously
-python -m src.backend.simulator --speed 0.05 --loop
+pytest tests/ -v
 ```
 
-### 6. Start the Dashboard (Terminal 3)
+### 4. Train the U-Net Model (Optional)
+A pre-trained checkpoint is bundled. To retrain with the new U-Net architecture and view CSI/ETS skill metrics:
 ```bash
-streamlit run src/frontend/app.py
+python -m backend.engine.train
 ```
 
-The dashboard auto-refreshes every 30 seconds.  
+### 5. Start the Backend (Terminal 1)
+```bash
+uvicorn backend.main:app --reload --port 8000
+```
+Interactive Swagger documentation: http://localhost:8000/docs  
+WebSocket endpoint: `ws://localhost:8000/ws/forecast`
+
+### 6. Start the Data Simulator (Terminal 2)
+
+**Option A: Stream Satellite Precipitation (4km PERSIANN / 10km GPM)**
+```bash
+python -m backend.simulator --source satellite --fps 60 --loop
+```
+
+**Option B: Stream Doppler Weather Radar Sweeps (dBZ + Velocity)**
+```bash
+python -m backend.simulator --source radar --radar-site Guwahati --fps 2 --loop
+```
+
+### 7. Launch the Frontend
+
+**Option A: React 19 GIS Dashboard (Recommended)**
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Open: http://localhost:5173
+
+**Option B: Streamlit Dashboard**
+```bash
+streamlit run frontend/streamlit_app.py
+```
 Open: http://localhost:8501
 
 ---
 
-## API Endpoints
+## API & WebSocket Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET`  | `/` | Health check |
-| `POST` | `/api/v1/ingest/frame` | Ingest a frame from the simulator |
-| `GET`  | `/api/v1/forecast/latest` | Get forecast + 4 hazard products + storm ETAs |
-
-Interactive Swagger docs: http://localhost:8000/docs
-
----
-
-## Hazard Products
-
-| Product | Threshold | Basis |
-|---------|-----------|-------|
-| Cloudburst Risk | ≥ 50 mm/hr | IMD: ≥ 100 mm / 3 hrs |
-| Hail Probability | > 25 mm/hr | Deep convective cell proxy |
-| Lightning Density | > 10 mm/hr | CG lightning correlation proxy |
-| Downburst Risk | High intensity + gradient | Microburst signature proxy |
+| `GET`  | `/` | Health check, buffer status, and model metadata |
+| `POST` | `/api/v1/ingest/frame` | Ingest a Cartesian precipitation frame from sensor/simulator |
+| `POST` | `/api/v1/ingest/radar-sweep` | Ingest raw Doppler Weather Radar polar sweep (dBZ + velocity) |
+| `GET`  | `/api/v1/forecast/latest` | Retrieve current forecast, 4 hazard layers, and storm ETAs |
+| `WS`   | `/ws/forecast` | Real-time bi-directional WebSocket push feed |
 
 ---
 
-## Documentation
+## Hazard Products & IMD Criteria
 
-See `/docs` for full system design, architecture diagrams, data sources, and development roadmap.
+| Product | Threshold | Meteorological Basis |
+|---------|-----------|----------------------|
+| **Cloudburst Risk** | ≥ 50 mm/hr | IMD definition: ≥ 100 mm in ≤ 3 hrs (sustained severe cloudburst) |
+| **Hail Probability** | > 25 mm/hr + CAPE | Deep convective core proxy scaled by Convective Available Potential Energy |
+| **Lightning Density** | > 10 mm/hr | Updraft convective proxy for Cloud-to-Ground (CG) discharge |
+| **Downburst / Microburst Risk** | High intensity + spatial gradient + wind shear | Rapid downdraft proxy enhanced by surface 10m wind speed |

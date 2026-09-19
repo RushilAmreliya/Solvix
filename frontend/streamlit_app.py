@@ -29,7 +29,8 @@ st.set_page_config(
 )
 
 # ─── Constants ────────────────────────────────────────────────────────────────
-API_BASE_URL = "http://localhost:8000"
+import os
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 ASSAM_BOUNDS = [[24.0, 89.8], [28.0, 96.0]]
 MAP_CENTER   = [26.0, 93.0]
 MAP_ZOOM     = 6
