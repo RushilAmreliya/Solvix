@@ -82,28 +82,37 @@ async def lifespan(app: FastAPI):
             raw.shape,
             MAX_VAL,
         )
-        # Pre-seed buffer: prioritize genuine live radar sequence over historical dataset
-        try:
-            live_sync = live_radar_engine.sync_live_radar_into_buffer(
-                frame_buffer, min_frames=settings.SEQ_IN, force_refresh=True
-            )
-            if len(frame_buffer) >= settings.SEQ_IN:
-                logger.info("Buffer initialized with LIVE RADAR data: %s", live_sync)
-        except Exception as exc:
-            logger.warning("Live radar initial sync failed (%s); using fallback dataset.", exc)
+        # Instantly pre-seed buffer with historical data so backend is ready immediately
+        for i in range(min(settings.SEQ_IN, len(raw))):
+            frame_buffer.append(raw[i])
+        logger.info("Buffer pre-seeded with %d historical frames (instant start).", len(frame_buffer))
 
-        if len(frame_buffer) < settings.SEQ_IN:
-            for i in range(min(settings.SEQ_IN, len(raw))):
-                frame_buffer.append(raw[i])
-            logger.info("Buffer pre-seeded with %d historical fallback frames.", len(frame_buffer))
+        # Then upgrade to live radar in background (non-blocking, ~3s network call)
+        def _async_live_seed():
+            try:
+                live_sync = live_radar_engine.sync_live_radar_into_buffer(
+                    frame_buffer, min_frames=settings.SEQ_IN, force_refresh=True
+                )
+                logger.info("Background live radar seed complete: %s", live_sync)
+            except Exception as exc:
+                logger.warning("Background live radar seed failed (%s); historical data in use.", exc)
+
+        import threading
+        threading.Thread(target=_async_live_seed, daemon=True, name="live-radar-seed").start()
+        logger.info("Live radar seed started in background — backend ready immediately.")
     else:
-        logger.warning("Data file not found at %s. Attempting live radar seed.", data_path)
-        try:
-            live_radar_engine.sync_live_radar_into_buffer(
-                frame_buffer, min_frames=settings.SEQ_IN, force_refresh=True
-            )
-        except Exception as exc:
-            logger.warning("Live radar seed failed: %s", exc)
+        logger.warning("Data file not found at %s. Attempting live radar seed in background.", data_path)
+
+        def _async_live_seed_only():
+            try:
+                live_radar_engine.sync_live_radar_into_buffer(
+                    frame_buffer, min_frames=settings.SEQ_IN, force_refresh=True
+                )
+            except Exception as exc:
+                logger.warning("Live radar seed failed: %s", exc)
+
+        import threading
+        threading.Thread(target=_async_live_seed_only, daemon=True, name="live-radar-seed").start()
 
     # Load trained U-Net / CNN model
     model_path = settings.MODEL_PATH

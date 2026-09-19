@@ -308,17 +308,23 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let retryCount = 0;
+    const MAX_RETRIES = 20;
+    let retryTimer = null;
+
     const connectWS = () => {
       try {
         const ws = new WebSocket(WS_URL);
         wsRef.current = ws;
-        ws.onopen    = () => { setConnectionMode('ws'); setError(null); };
+        ws.onopen    = () => { setConnectionMode('ws'); setError(null); retryCount = 0; };
         ws.onmessage = (e) => {
           try {
             const msg = JSON.parse(e.data);
             if (msg.type === 'forecast' && msg.data) {
               setData(msg.data);
               setLastUpdated(new Date().toLocaleTimeString());
+              setError(null);
+              retryCount = 0;
             } else if (msg.type === 'frame_ingested') {
               fetchHttpData();
             }
@@ -328,11 +334,39 @@ export default function App() {
         ws.onclose = () => setConnectionMode(p => p === 'ws' ? 'http' : p);
       } catch { setConnectionMode('http'); }
     };
+
+    const tryFetch = async () => {
+      try {
+        const res  = await fetch(API_URL, { signal: AbortSignal.timeout(8000) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        setData(json);
+        setError(null);
+        setLastUpdated(new Date().toLocaleTimeString());
+        setConnectionMode(prev => prev === 'ws' ? 'ws' : 'http');
+        retryCount = 0;
+      } catch (err) {
+        const msg = err?.message ?? 'Failed to fetch';
+        setError(msg);
+        setConnectionMode('error');
+        // Auto-retry with backoff up to 20 times while backend is starting up
+        if (retryCount < MAX_RETRIES) {
+          retryCount++;
+          const delay = Math.min(2000 * retryCount, 10000); // 2s, 4s, 6s … max 10s
+          retryTimer = setTimeout(tryFetch, delay);
+        }
+      }
+    };
+
     connectWS();
-    const t0 = setTimeout(fetchHttpData, 800);
-    // ─── REDUCED polling: 30 s instead of 10 s to stop rapid visual flicker ──
+    retryTimer = setTimeout(tryFetch, 500); // try immediately
+    // ─── poll every 30 s after initial load ──
     const t1 = setInterval(fetchHttpData, 30_000);
-    return () => { clearTimeout(t0); clearInterval(t1); wsRef.current?.close(); };
+    return () => {
+      if (retryTimer) clearTimeout(retryTimer);
+      clearInterval(t1);
+      wsRef.current?.close();
+    };
   }, [fetchHttpData]);
 
   // ── Severity debounce: only update after 3 consecutive identical values ─────
@@ -426,20 +460,59 @@ export default function App() {
   // ── Render: Loading / Error ─────────────────────────────────────────────────
   if (!data) {
     return (
-      <div className="app-root">
-        <Skeleton/>
-        {error && (
-          <div className="error-overlay">
-            <div className="error-card">
-              <AlertTriangle size={36} color="#f87171"/>
-              <div className="error-title">Backend Unreachable</div>
-              <div className="error-msg">{error}</div>
-              <button className="error-btn" onClick={fetchHttpData}>
-                <RefreshCcw size={14}/> Retry
-              </button>
+      <div className="app-root" style={{ display:'flex', alignItems:'center', justifyContent:'center', background:'#0a0f1a', minHeight:'100vh' }}>
+        <div style={{ textAlign:'center', maxWidth:380, padding:32 }}>
+          {/* App logo */}
+          <div style={{ marginBottom:20, display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
+            <div style={{ background:'#1e3a5f', borderRadius:12, padding:10 }}>
+              <CloudRain size={32} color="#60a5fa"/>
+            </div>
+            <div style={{ textAlign:'left' }}>
+              <div style={{ color:'#f1f5f9', fontWeight:800, fontSize:18 }}>NowCast Fusion</div>
+              <div style={{ color:'#64748b', fontSize:12 }}>Convective EWS · NE India (Assam)</div>
             </div>
           </div>
-        )}
+
+          {error ? (
+            <>
+              {/* Animated connecting spinner */}
+              <div style={{ margin:'24px auto', width:56, height:56, position:'relative' }}>
+                <div style={{
+                  position:'absolute', inset:0, borderRadius:'50%',
+                  border:'3px solid #1e3a5f',
+                  borderTopColor:'#3b82f6',
+                  animation:'spin 1s linear infinite',
+                }}/>
+                <Activity size={22} color="#60a5fa" style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)' }}/>
+              </div>
+              <div style={{ color:'#94a3b8', fontSize:14, marginBottom:8 }}>Connecting to backend…</div>
+              <div style={{ color:'#475569', fontSize:12, marginBottom:24 }}>
+                Auto-retrying — this usually takes 5–10 seconds on first start
+              </div>
+              <div style={{ background:'#1e293b', borderRadius:8, padding:'10px 16px', marginBottom:20, border:'1px solid #334155' }}>
+                <div style={{ color:'#64748b', fontSize:11, marginBottom:4 }}>Start the backend if not running:</div>
+                <code style={{ color:'#38bdf8', fontSize:11 }}>python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000</code>
+              </div>
+              <button className="error-btn" onClick={fetchHttpData} style={{ marginRight:8 }}>
+                <RefreshCcw size={13}/> Retry Now
+              </button>
+            </>
+          ) : (
+            <>
+              <div style={{ margin:'24px auto', width:56, height:56, position:'relative' }}>
+                <div style={{
+                  position:'absolute', inset:0, borderRadius:'50%',
+                  border:'3px solid #1e3a5f',
+                  borderTopColor:'#3b82f6',
+                  animation:'spin 1s linear infinite',
+                }}/>
+                <Activity size={22} color="#60a5fa" style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)' }}/>
+              </div>
+              <div style={{ color:'#94a3b8', fontSize:14 }}>Loading live weather data…</div>
+            </>
+          )}
+        </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
@@ -671,14 +744,20 @@ export default function App() {
               {basemapStyle === 'dark' && (
                 <>
                   <TileLayer
-                    url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
-                    attribution='&copy; <a href="https://www.esri.com/">Esri</a>, HERE, &copy; OpenStreetMap'
-                    maxZoom={16}
+                    key="dark-base"
+                    url="https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png"
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
+                    subdomains="abcd"
+                    maxZoom={19}
+                    maxNativeZoom={19}
                   />
                   <TileLayer
-                    url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
+                    key="dark-labels"
+                    url="https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png"
                     attribution=""
-                    maxZoom={16}
+                    subdomains="abcd"
+                    maxZoom={19}
+                    maxNativeZoom={19}
                     zIndex={150}
                     pane="shadowPane"
                   />
@@ -688,14 +767,18 @@ export default function App() {
               {basemapStyle === 'satellite' && (
                 <>
                   <TileLayer
+                    key="sat-base"
                     url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                     attribution='&copy; <a href="https://www.esri.com/">Esri</a>, Earthstar Geographics'
-                    maxZoom={18}
+                    maxZoom={19}
+                    maxNativeZoom={17}
                   />
                   <TileLayer
+                    key="sat-labels"
                     url="https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
                     attribution=""
-                    maxZoom={18}
+                    maxZoom={19}
+                    maxNativeZoom={17}
                     zIndex={150}
                     pane="shadowPane"
                   />
@@ -704,9 +787,11 @@ export default function App() {
 
               {basemapStyle === 'streets' && (
                 <TileLayer
+                  key="streets"
                   url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                   maxZoom={19}
+                  maxNativeZoom={19}
                 />
               )}
 
