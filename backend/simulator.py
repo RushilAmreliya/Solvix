@@ -63,7 +63,7 @@ def run_simulator(
     except FileNotFoundError:
         logger.error(
             "Data file not found: %s\n"
-            "Run 'python -m src.engine.fetch_gee_data' first.",
+            "Run 'scripts/start_download.bat' or 'python -m backend.engine.fetch_persiann' first.",
             data_path,
         )
         return

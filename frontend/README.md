@@ -1,16 +1,55 @@
-# React + Vite
+﻿# NowCast Fusion — Command Center Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A real-time GIS situational awareness dashboard built with React 19, Vite, Tailwind CSS, and Leaflet. Designed for meteorologists and disaster response teams monitoring convective storm hazards across North-East India (Assam Region).
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Key Features
 
-## React Compiler
+- **Real-Time WebSocket Feed (`ws://localhost:8000/ws/forecast`)**:
+  - Live 60 FPS frame streaming and low-latency nowcast updates.
+  - Automatic reconnection logic with live ping indicator.
+- **Interactive Leaflet GIS Map**:
+  - Bound strictly to the Assam domain (`24.0°N–28.0°N, 89.8°E–96.0°E`).
+  - Esri Dark Canvas and Satellite basemaps.
+  - Transparent precipitation overlays with live colorbars.
+  - Live Doppler radar tiles via RainViewer API (with smooth tile fallback).
+  - IMD hazard polygons (Cloudburst, Hail, Lightning, Downburst).
+- **Early Warning & Hazard Intelligence**:
+  - 4 automated IMD convective hazard monitors.
+  - Storm arrival countdown clock for key cities (Guwahati, Silchar, Dibrugarh, etc.).
+  - Thermodynamic atmospheric context (CAPE, Lifted Index, 10m wind shear) powered by Open-Meteo.
+  - User geolocation support with local threat assessment.
+- **Playback & Lead-Time Controls**:
+  - Lead-time slider: Current, +30 min, +60 min, +90 min, +3 hr, +6 hr.
+  - Play/Pause animation with loop toggle.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the Oxlint configuration
+## Tech Stack
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+- **Framework**: React 19 + Vite 8
+- **Styling**: Tailwind CSS v4 + Lucide React icons
+- **GIS / Mapping**: Leaflet + React-Leaflet
+- **Networking**: WebSocket API + Axios / Fetch
+
+---
+
+## Development Setup
+
+```bash
+# Navigate to frontend directory
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start development server (accessible over LAN at http://0.0.0.0:5173)
+npm run dev
+
+# Production build
+npm run build
+
+# Preview production build
+npm run preview
+```

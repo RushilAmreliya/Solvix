@@ -19,3 +19,8 @@ data/*_chunk_*.npy
 *.log
 *.png
 data/*_smart.npy
+
+# Test & Notebook caches
+.pytest_cache/
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*

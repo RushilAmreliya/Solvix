@@ -1,5 +1,6 @@
 @echo off
 title NowCast Fusion Launcher
+cd /d "%~dp0"
 echo ===================================================
 echo   NowCast Fusion - Convective Hazard Nowcasting
 echo   Starting Local Development Stack (React + FastAPI)

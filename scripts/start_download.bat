@@ -1,5 +1,6 @@
 @echo off
 title PERSIANN-CCS Smart Satellite Data Downloader
+cd /d "%~dp0\.."
 echo ======================================================================
 echo   NowCast Fusion - Smart Convective Data Downloader
 echo   Coverage: May 1, 2023 to July 31, 2026

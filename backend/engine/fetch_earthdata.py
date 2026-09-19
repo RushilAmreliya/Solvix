@@ -3,11 +3,11 @@ NASA Earthdata GPM IMERG Downloader
 Credentials are read from _netrc — NEVER stored in code.
 
 Setup:
-    python setup_credentials.py    ← run this once first
+    python scripts/setup_credentials.py    ← run this once first
 
 Usage:
-    python -m src.engine.fetch_earthdata
-    python -m src.engine.fetch_earthdata --start 2023-06-01 --end 2023-08-31
+    python -m backend.engine.fetch_earthdata
+    python -m backend.engine.fetch_earthdata --start 2023-06-01 --end 2023-08-31
 """
 import os
 import sys

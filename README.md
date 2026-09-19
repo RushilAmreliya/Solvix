@@ -1,13 +1,13 @@
-# Convective Scale Nowcasting System (SIH26084)
+﻿# Convective Scale Nowcasting System (SIH26084)
 
-A real-time, multi-source data fusion Nowcasting System for thunderstorms, hail, downbursts, and cloudbursts.  
+A real-time, multi-source data fusion Nowcasting System for thunderstorms, hail, downbursts, and cloudbursts across North-East India (Assam Region).  
 Developed for **Smart India Hackathon** — Problem Statement SIH26084.
 
 ---
 
 ## Architecture Overview
 
-```
+```text
 Data Simulator ──POST──▶ FastAPI Backend (Lifespan + WS) ──▶ PySTEPS Optical Flow (Primary)
                                                         └──▶ U-Net Enhancement (30% blend)
                                                         └──▶ Hazard Engine (4 IMD Products)
@@ -16,38 +16,71 @@ Data Simulator ──POST──▶ FastAPI Backend (Lifespan + WS) ──▶ PyS
                                                         └──▶ Streamlit Dashboard (Folium GIS)
 ```
 
+---
+
 ## Project Structure
 
 ```text
 .
-├── docs/                        # System architecture, scientific scope, data sources
-├── data/                        # Sample satellite cubes (4km PERSIANN / 10km GPM)
-│   ├── assam_persiann_4km.npy
-│   └── assam_gpm_sample.npy
-├── backend/
-│   ├── main.py                  # FastAPI REST + WebSocket backend
-│   ├── settings.py              # Pydantic BaseSettings & .env management
-│   ├── simulator.py             # Historical event stream simulator
+├── notebooks/                   # Jupyter notebooks for model training & exploration
+│   ├── train_on_colab.ipynb     # Google Colab U-Net training pipeline
+│   └── README.md                # Guide for running on Colab GPU
+├── scripts/                     # Standalone utility & data automation scripts
+│   ├── setup_credentials.py     # NASA Earthdata credentials setup
+│   ├── start_download.bat       # PERSIANN-CCS multi-year data downloader
+│   └── README.md                # Scripts reference guide
+├── backend/                     # High-performance FastAPI server & scientific engines
+│   ├── main.py                  # REST + WebSocket endpoints & background tasks
+│   ├── settings.py              # Pydantic BaseSettings & configuration
+│   ├── simulator.py             # Event stream simulator (Satellite & Doppler radar)
 │   └── engine/
-│       ├── nowcast_model.py     # UNetNowcast deep learning architecture
-│       ├── pysteps_engine.py    # PySTEPS Lucas-Kanade optical flow extrapolation
-│       ├── hazard_engine.py     # 4 convective hazard algorithms + GeoJSON polygons
+│       ├── alert_engine.py      # Hazard alerts & IMD threshold classification
+│       ├── fetch_earthdata.py   # NASA Earthdata satellite client
+│       ├── fetch_gee_data.py    # Google Earth Engine precipitation client
+│       ├── fetch_persiann.py    # PERSIANN-CCS 4km downloader
+│       ├── hazard_engine.py     # Cloudburst, Hail, Lightning, Downburst algorithms
+│       ├── live_radar_engine.py # Live RainViewer tile composite & rain rate ingestion
+│       ├── nowcast_model.pth    # Bundled pre-trained U-Net weights
+│       ├── nowcast_model.py     # PyTorch UNetNowcast neural network
+│       ├── openmeteo_engine.py  # Atmospheric thermodynamic context (CAPE, wind shear)
+│       ├── pysteps_engine.py    # Lucas-Kanade optical flow extrapolation
+│       ├── radar_loader.py      # Doppler polar sweep conversion
 │       ├── rendering.py         # Transparent geospatial PNG map rendering
-│       ├── openmeteo_engine.py  # Real-time CAPE & wind thermodynamic context
 │       ├── terrain_downscale.py # SRTM 90m DEM downscaling to 1 km
-│       └── train.py             # U-Net model training script with CSI/ETS metrics
-├── frontend/                    # Modern React 19 + Vite + Leaflet dashboard
+│       └── train.py             # PyTorch training loop with RainWeightedLoss
+├── frontend/                    # Modern React 19 + Vite + Leaflet GIS Dashboard
 │   ├── src/
-│   │   ├── App.jsx              # Real-time WebSocket + Leaflet GIS UI
-│   │   └── index.css            # Tailwind styles
-│   └── package.json
+│   │   ├── App.jsx              # Command Center UI (WebSocket, GIS map, alerts)
+│   │   ├── App.css
+│   │   ├── index.css            # Tailwind styles
+│   │   └── main.jsx
+│   ├── package.json
+│   ├── streamlit_app.py         # Alternative lightweight Streamlit/Folium dashboard
+│   └── README.md
+├── data/                        # Satellite cubes & topographic elevation models
+│   ├── assam_persiann_4km.npy   # High-resolution (4km) PERSIANN-CCS dataset
+│   ├── assam_gpm_sample.npy     # Benchmark NASA GPM IMERG 10km grid
+│   ├── srtm_assam.npy           # NASA SRTM topography grid
+│   └── README.md
+├── docs/                        # Scientific, architecture, and design specifications
+│   ├── architecture.md
+│   ├── data_sources.md
+│   ├── development_roadmap.md
+│   ├── idea_summary.md
+│   ├── problem_statement.md
+│   ├── scope.md
+│   ├── team_roles.md
+│   └── tech_stack.md
 ├── tests/                       # Complete pytest unit and integration test suite
-│   ├── test_hazard_engine.py    # IMD threshold & proxy tests
-│   ├── test_pysteps_engine.py   # Unit conversion & persistence fallback tests
-│   └── test_model_and_api.py    # U-Net forward pass, CSI/ETS, and API tests
+│   ├── test_backend_fixes.py    # Live radar, caching, polar rasterization tests
+│   ├── test_hazard_engine.py    # IMD threshold & convective proxy tests
+│   ├── test_model_and_api.py    # U-Net forward pass, CSI/ETS metrics, API tests
+│   └── test_pysteps_engine.py   # Unit conversion & persistence fallback tests
 ├── .env.example                 # Backend environment variable template
+├── .gitignore                   # Git ignore rules for data chunks & caches
+├── Procfile                     # Cloud deployment configuration
 ├── requirements.txt             # Python dependencies
-└── Procfile                     # Deployment configuration
+└── start_local.bat              # 1-click Windows launcher (FastAPI + Simulator + React)
 ```
 
 ---
@@ -61,7 +94,16 @@ Data Simulator ──POST──▶ FastAPI Backend (Lifespan + WS) ──▶ PyS
 
 ---
 
-## How to Run
+## Quick Start (Windows 1-Click Launcher)
+
+Double-click `start_local.bat` in the project root to instantly spin up:
+1. FastAPI backend server (`http://localhost:8000`)
+2. Data simulator streaming live 60 FPS weather frames
+3. React 19 GIS Command Center dashboard (`http://localhost:5173`)
+
+---
+
+## Manual Setup & Step-by-Step Execution
 
 ### 1. Install Python Dependencies
 ```bash
@@ -74,25 +116,35 @@ cp .env.example .env
 ```
 
 ### 3. Run Automated Tests
-Verify all 15 scientific and API tests pass:
+Verify all 28 scientific, machine learning, and API tests pass:
 ```bash
 pytest tests/ -v
 ```
 
 ### 4. Train the U-Net Model (Optional)
-A pre-trained checkpoint is bundled. To retrain with the new U-Net architecture and view CSI/ETS skill metrics:
+A pre-trained checkpoint (`backend/engine/nowcast_model.pth`) is bundled with the repository.  
+To retrain locally or view CSI/ETS skill metrics:
 ```bash
 python -m backend.engine.train
 ```
+To train on Google Colab with GPU acceleration, use `notebooks/train_on_colab.ipynb`.
 
-### 5. Start the Backend (Terminal 1)
+### 5. Download Additional Satellite Data (Optional)
+To fetch multi-year 4km PERSIANN-CCS data:
+```bash
+scripts\start_download.bat
+# or
+python -m backend.engine.fetch_persiann --start 2023-05-01 --end 2026-07-31
+```
+
+### 6. Start the Backend (Terminal 1)
 ```bash
 uvicorn backend.main:app --reload --port 8000
 ```
-Interactive Swagger documentation: http://localhost:8000/docs  
-WebSocket endpoint: `ws://localhost:8000/ws/forecast`
+- Interactive Swagger documentation: http://localhost:8000/docs  
+- WebSocket endpoint: `ws://localhost:8000/ws/forecast`
 
-### 6. Start the Data Simulator (Terminal 2)
+### 7. Start the Data Simulator (Terminal 2)
 
 **Option A: Stream Satellite Precipitation (4km PERSIANN / 10km GPM)**
 ```bash
@@ -104,15 +156,15 @@ python -m backend.simulator --source satellite --fps 60 --loop
 python -m backend.simulator --source radar --radar-site Guwahati --fps 2 --loop
 ```
 
-### 7. Launch the Frontend
+### 8. Launch the Frontend
 
-**Option A: React 19 GIS Dashboard (Recommended)**
+**Option A: React 19 GIS Command Center (Recommended)**
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Open: http://localhost:5173
+Open: http://localhost:5173 (or http://localhost:5173 across LAN)
 
 **Option B: Streamlit Dashboard**
 ```bash
@@ -129,6 +181,7 @@ Open: http://localhost:8501
 | `GET`  | `/` | Health check, buffer status, and model metadata |
 | `POST` | `/api/v1/ingest/frame` | Ingest a Cartesian precipitation frame from sensor/simulator |
 | `POST` | `/api/v1/ingest/radar-sweep` | Ingest raw Doppler Weather Radar polar sweep (dBZ + velocity) |
+| `POST` | `/api/v1/ingest/sync-live-radar` | Trigger on-demand sync with live RainViewer/IMD radar |
 | `GET`  | `/api/v1/forecast/latest` | Retrieve current forecast, 4 hazard layers, and storm ETAs |
 | `WS`   | `/ws/forecast` | Real-time bi-directional WebSocket push feed |
 
