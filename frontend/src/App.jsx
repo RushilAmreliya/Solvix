@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   MapContainer, TileLayer, ImageOverlay, Polygon, Tooltip,
-  CircleMarker, Popup, useMap
+  CircleMarker, Popup, Rectangle, useMap
 } from 'react-leaflet';
 import {
   CloudRain, Zap, CloudSnow, Wind, RefreshCcw, Wifi, WifiOff,
@@ -91,10 +91,21 @@ function FlyTo({ target, zoom }) {
   return null;
 }
 
-function FitBounds({ bounds }) {
+// ── Lock view strictly to bounds & prevent zooming out beyond the box ────────
+function LockToBounds({ bounds }) {
   const map = useMap();
   useEffect(() => {
-    if (map && bounds) map.fitBounds(bounds, { padding:[8,8], animate:false });
+    if (!map || !bounds) return;
+    const applyLock = () => {
+      // Calculate exact zoom that fits the box in viewport
+      const fitZoom = map.getBoundsZoom(bounds, false, [0, 0]);
+      map.setMinZoom(fitZoom);
+      map.setMaxBounds(bounds);
+      map.fitBounds(bounds, { padding: [0, 0], animate: false });
+    };
+    applyLock();
+    map.on('resize', applyLock);
+    return () => map.off('resize', applyLock);
   }, [map, bounds]);
   return null;
 }
@@ -251,7 +262,7 @@ export default function App() {
   const [flyTarget,      setFlyTarget]      = useState(null);
   const [showLocCard,    setShowLocCard]    = useState(false);
   const [syncingRadar,   setSyncingRadar]   = useState(false);
-  const [basemapStyle,   setBasemapStyle]   = useState('dark'); // 'dark' | 'satellite' | 'streets'
+  const [basemapStyle,   setBasemapStyle]   = useState('satellite'); // 'satellite' | 'streets'
 
   const wsRef = useRef(null);
 
@@ -699,7 +710,6 @@ export default function App() {
             <div className="map-caveat" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ display: 'flex', background: '#1e293b', borderRadius: 6, padding: 2, gap: 2 }}>
                 {[
-                  { id: 'dark', label: 'Dark' },
                   { id: 'satellite', label: 'Satellite' },
                   { id: 'streets', label: 'Streets' },
                 ].map(b => (
@@ -730,60 +740,43 @@ export default function App() {
           <div className="map-wrap">
             <MapContainer
               bounds={ASSAM_BOUNDS}
-              boundsOptions={{ padding:[8,8] }}
+              boundsOptions={{ padding:[0,0] }}
               maxBounds={ASSAM_BOUNDS}
-              maxBoundsViscosity={0.7}
+              maxBoundsViscosity={1.0}
               scrollWheelZoom
               className="map-container"
               style={{ background:'#0f172a' }}
             >
-              <FitBounds bounds={ASSAM_BOUNDS}/>
+              <LockToBounds bounds={ASSAM_BOUNDS}/>
               {flyTarget && <FlyTo target={flyTarget} zoom={10}/>}
 
               {/* ── Basemap: Clean, 100% Free, Zero Watermark Tiles ── */}
-              {basemapStyle === 'dark' && (
-                <>
-                  <TileLayer
-                    key="dark-base"
-                    url="https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png"
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
-                    subdomains="abcd"
-                    maxZoom={19}
-                    maxNativeZoom={19}
-                  />
-                  <TileLayer
-                    key="dark-labels"
-                    url="https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png"
-                    attribution=""
-                    subdomains="abcd"
-                    maxZoom={19}
-                    maxNativeZoom={19}
-                    zIndex={150}
-                    pane="shadowPane"
-                  />
-                </>
-              )}
-
               {basemapStyle === 'satellite' && (
                 <>
                   <TileLayer
                     key="sat-base"
                     url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                     attribution='&copy; <a href="https://www.esri.com/">Esri</a>, Earthstar Geographics'
-                    maxZoom={19}
-                    maxNativeZoom={17}
+                    maxZoom={18}
+                    maxNativeZoom={18}
                   />
                   <TileLayer
                     key="sat-labels"
                     url="https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
                     attribution=""
-                    maxZoom={19}
-                    maxNativeZoom={17}
+                    maxZoom={18}
+                    maxNativeZoom={18}
                     zIndex={150}
                     pane="shadowPane"
                   />
                 </>
               )}
+
+              {/* ── Highlighted box boundary around Assam domain ── */}
+              <Rectangle
+                bounds={ASSAM_BOUNDS}
+                pathOptions={{ color: '#38bdf8', weight: 2.5, fill: false, opacity: 0.9 }}
+              />
 
               {basemapStyle === 'streets' && (
                 <TileLayer
