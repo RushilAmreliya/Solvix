@@ -18,13 +18,13 @@ from typing import Set
 
 import numpy as np
 import torch
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 # Engine imports (single source of truth)
 from backend.engine.nowcast_model import UNetNowcast, SimpleNowcastCNN
-from backend.engine import pysteps_engine, hazard_engine, alert_engine, radar_loader, live_radar_engine
+from backend.engine import pysteps_engine, hazard_engine, alert_engine, radar_loader, live_radar_engine, imd_radar_loader
 from backend.engine.openmeteo_engine import get_atmospheric_context
 from backend.engine.terrain_downscale import get_or_load_srtm
 from backend.engine.rendering import array_to_base64_img
@@ -432,6 +432,68 @@ async def ingest_radar_sweep(payload: RadarSweepPayload) -> dict:
     except Exception as exc:
         logger.error("Radar sweep ingestion failed: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post(
+    "/api/v1/ingest/radar-file",
+    tags=["Ingest"],
+    summary="Ingest an IMD Doppler Weather Radar file (NetCDF CF-Radial or ODIM HDF5)",
+)
+async def ingest_radar_file(
+    file: UploadFile = File(...),
+    radar_site: str = Form("Guwahati"),
+) -> dict:
+    """
+    Ingest a binary operational Doppler Weather Radar file (.nc, .h5, .hdf5).
+    Parses polar reflectivity & Doppler velocity, converts to rain rate via Marshall-Palmer,
+    rasterizes to the Assam regional Cartesian domain, and updates the nowcasting buffer.
+    """
+    try:
+        content = await file.read()
+        grid_shape = frame_buffer[-1].shape if len(frame_buffer) > 0 else (100, 155)
+
+        processed = imd_radar_loader.process_radar_file(
+            file_bytes_or_path=content,
+            filename=file.filename,
+            grid_shape=grid_shape,
+            default_site=radar_site,
+        )
+
+        cartesian_rain = processed["cartesian_rain"]
+        frame_buffer.append(cartesian_rain)
+
+        logger.info(
+            "IMD Radar file ingested: %s | format=%s | site=%s | max_rain=%.2f mm/hr | buffer=%d",
+            file.filename,
+            processed["format"],
+            processed["radar_site"],
+            processed["max_rain_mm_hr"],
+            len(frame_buffer),
+        )
+
+        asyncio.create_task(
+            notify_websockets({
+                "type": "frame_ingested",
+                "source": "imd_dwr_file",
+                "filename": file.filename,
+                "site": processed["radar_site"],
+                "buffer_size": len(frame_buffer),
+            })
+        )
+
+        return {
+            "status": "ok",
+            "filename": file.filename,
+            "format": processed["format"],
+            "radar_site": processed["radar_site"],
+            "max_dbz": processed["max_dbz"],
+            "max_rain_mm_hr": processed["max_rain_mm_hr"],
+            "buffer_size": len(frame_buffer),
+            "shear_info": processed["shear_info"],
+        }
+    except Exception as exc:
+        logger.error("IMD Radar file ingestion failed: %s", exc)
+        raise HTTPException(status_code=400, detail=f"Radar file ingestion failed: {exc}") from exc
 
 
 @app.post(

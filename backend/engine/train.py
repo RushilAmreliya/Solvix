@@ -15,15 +15,17 @@ Usage:
 Outputs:
     backend/engine/nowcast_model.pth  -- best checkpoint (lowest val loss OR best CSI)
 """
+import argparse
+import glob
 import os
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.utils.data import DataLoader, Dataset, Subset
+from torch.utils.data import DataLoader, Dataset, Subset, ConcatDataset
 
-from backend.engine.nowcast_model import UNetNowcast
+from backend.engine.nowcast_model import UNetNowcast, ConvLSTMNowcast
 
 
 # ---- Rain-Weighted Loss ------------------------------------------------------
@@ -80,6 +82,81 @@ class WeatherDataset(Dataset):
         print(
             f"Dataset: shape={raw.shape}, max={self.max_val:.2f} mm/hr, "
             f"mean={raw.mean():.4f} mm/hr, samples={len(self)}"
+        )
+
+    def __len__(self) -> int:
+        return max(0, len(self.data) - self.total_seq)
+
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
+        x = self.data[idx              : idx + self.seq_in]
+        y = self.data[idx + self.seq_in : idx + self.total_seq]
+        return torch.from_numpy(x), torch.from_numpy(y)
+
+    def sample_rain_intensity(self) -> np.ndarray:
+        """Mean target rainfall intensity for every sample (used for stratified split)."""
+        out = np.zeros(len(self), dtype=np.float32)
+        for i in range(len(self)):
+            out[i] = float(self.data[i + self.seq_in : i + self.total_seq].mean())
+        return out
+
+
+class MultiYearWeatherDataset(Dataset):
+    """
+    Aggregates multiple annual smart-chunk .npy files into a unified training corpus.
+
+    Automatically discovers all files matching the pattern:
+        data/assam_persiann_4km_smart_chunk_*.npy
+
+    Each chunk is normalised by the global max across all chunks so that the
+    rain rate scale is consistent across years. Falls back gracefully to the
+    combined assam_persiann_4km.npy file if no chunks are found.
+
+    Args:
+        data_dir: Directory containing the .npy chunk files.
+        seq_in:   Number of past frames as model input.
+        seq_out:  Number of future frames to predict.
+    """
+
+    def __init__(self, data_dir: str, seq_in: int = 3, seq_out: int = 3) -> None:
+        self.seq_in    = seq_in
+        self.seq_out   = seq_out
+        self.total_seq = seq_in + seq_out
+
+        chunk_pattern = os.path.join(data_dir, "assam_persiann_4km_smart_chunk_*.npy")
+        chunk_paths = sorted(glob.glob(chunk_pattern))
+
+        if not chunk_paths:
+            # Fallback: use the combined file
+            fallback = os.path.join(data_dir, "assam_persiann_4km.npy")
+            if os.path.exists(fallback):
+                chunk_paths = [fallback]
+                print(f"[MultiYearDataset] No chunks found; using combined: {fallback}")
+            else:
+                raise FileNotFoundError(
+                    f"No training data found in {data_dir}. "
+                    "Run scripts/start_download.bat to download PERSIANN-CCS data."
+                )
+
+        print(f"[MultiYearDataset] Found {len(chunk_paths)} data chunk(s):")
+        arrays = []
+        for p in chunk_paths:
+            arr = np.load(p).astype(np.float32)
+            print(f"  {os.path.basename(p)}: shape={arr.shape}, max={arr.max():.2f} mm/hr")
+            arrays.append(arr)
+
+        # Determine global max for consistent normalisation across years
+        self.max_val = float(max(a.max() for a in arrays))
+        if self.max_val <= 0:
+            self.max_val = 1.0
+
+        # Normalise and concatenate all arrays along time axis
+        norm_arrays = [a / self.max_val for a in arrays]
+        self.data = np.concatenate(norm_arrays, axis=0)   # (T_total, H, W)
+
+        total_samples = max(0, len(self.data) - self.total_seq)
+        print(
+            f"[MultiYearDataset] Combined: shape={self.data.shape}, "
+            f"global_max={self.max_val:.2f} mm/hr, samples={total_samples}"
         )
 
     def __len__(self) -> int:
@@ -201,24 +278,15 @@ def report_metrics(
 
 # ---- Training Loop -----------------------------------------------------------
 
-def train_model() -> None:
-    data_4km  = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../../data/assam_persiann_4km.npy")
+def train_model(arch: str = "unet", multi_year: bool = False) -> None:
+    data_dir = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "../../data")
     )
-    data_10km = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../../data/assam_gpm_sample.npy")
-    )
-    data_path  = data_4km if os.path.exists(data_4km) else data_10km
+    data_4km  = os.path.join(data_dir, "assam_persiann_4km.npy")
+    data_10km = os.path.join(data_dir, "assam_gpm_sample.npy")
     model_path = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "nowcast_model.pth")
     )
-
-    if not os.path.exists(data_path):
-        print(f"Error: data file not found at {data_path}")
-        return
-
-    label = "4km PERSIANN-CCS" if "4km" in data_path else "10km GPM"
-    print(f"[*] Training on {label}: {data_path}")
 
     SEQ_IN        = 3
     SEQ_OUT       = 3
@@ -227,7 +295,22 @@ def train_model() -> None:
     LEARNING_RATE = 5e-4
     GRAD_CLIP     = 1.0
 
-    dataset = WeatherDataset(data_path, seq_in=SEQ_IN, seq_out=SEQ_OUT)
+    # ── Dataset selection ────────────────────────────────────────────────────
+    if multi_year:
+        print(f"[*] Multi-Year Training: aggregating all PERSIANN-CCS chunks from {data_dir}")
+        try:
+            dataset = MultiYearWeatherDataset(data_dir, seq_in=SEQ_IN, seq_out=SEQ_OUT)
+        except FileNotFoundError as e:
+            print(f"Error: {e}")
+            return
+    else:
+        data_path = data_4km if os.path.exists(data_4km) else data_10km
+        if not os.path.exists(data_path):
+            print(f"Error: data file not found at {data_path}")
+            return
+        label = "4km PERSIANN-CCS" if "4km" in data_path else "10km GPM"
+        print(f"[*] Training on {label}: {data_path}")
+        dataset = WeatherDataset(data_path, seq_in=SEQ_IN, seq_out=SEQ_OUT)
 
     print("[*] Computing stratified train/val split ...")
     train_idx, val_idx = stratified_split(dataset, val_fraction=0.20, min_gap=6)
@@ -247,8 +330,17 @@ def train_model() -> None:
     val_loader   = DataLoader(Subset(dataset, val_idx),   batch_size=BATCH_SIZE,
                               shuffle=False, num_workers=0)
 
-    device    = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model     = UNetNowcast(in_channels=SEQ_IN, out_channels=SEQ_OUT).to(device)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # ── Model selection ──────────────────────────────────────────────────────
+    arch = arch.lower()
+    if arch == "convlstm":
+        model = ConvLSTMNowcast(in_channels=SEQ_IN, out_channels=SEQ_OUT, hidden_channels=32).to(device)
+        print(f"[*] Architecture: ConvLSTMNowcast (spatiotemporal recurrent, encoder-decoder)")
+    else:
+        model = UNetNowcast(in_channels=SEQ_IN, out_channels=SEQ_OUT).to(device)
+        print(f"[*] Architecture: UNetNowcast (spatial skip-connection encoder-decoder)")
+
     criterion = RainWeightedLoss(rain_weight=20.0, rain_threshold=0.01, l1_alpha=0.05)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-5)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS, eta_min=1e-6)
@@ -329,4 +421,18 @@ def train_model() -> None:
 
 
 if __name__ == "__main__":
-    train_model()
+    parser = argparse.ArgumentParser(description="NowCast Fusion — Model Training Script")
+    parser.add_argument(
+        "--arch",
+        choices=["unet", "convlstm"],
+        default="unet",
+        help="Model architecture to train (default: unet)",
+    )
+    parser.add_argument(
+        "--multi-year",
+        action="store_true",
+        default=False,
+        help="Aggregate all PERSIANN-CCS annual chunks for multi-year training",
+    )
+    args = parser.parse_args()
+    train_model(arch=args.arch, multi_year=args.multi_year)
