@@ -267,12 +267,13 @@ def generate_sample_cf_radial_netcdf(output_path: str, n_az: int = 72, n_gates: 
         dbz_var = ds.createVariable("DBZ", "f4", ("azimuth", "range"))
         vel_var = ds.createVariable("VEL", "f4", ("azimuth", "range"))
 
-        az_var[:] = np.linspace(0, 360, n_az, endpoint=False)
-        rng_var[:] = np.linspace(1000, 250000, n_gates)  # metres
-        dbz_var[:] = dbz_sweep
-        vel_var[:] = vel_sweep
+        az_var[:] = np.linspace(0, 360, n_az, endpoint=False, dtype=np.float32)
+        rng_var[:] = np.linspace(1000, 250000, n_gates, dtype=np.float32)  # metres
+        dbz_var[:] = np.ascontiguousarray(dbz_sweep, dtype=np.float32)
+        vel_var[:] = np.ascontiguousarray(vel_sweep, dtype=np.float32)
 
     return output_path
+
 
 
 def generate_sample_odim_hdf5(output_path: str, n_az: int = 72, n_gates: int = 100) -> str:

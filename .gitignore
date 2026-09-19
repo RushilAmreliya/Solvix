@@ -24,3 +24,7 @@ data/*_smart.npy
 .pytest_cache/
 .ipynb_checkpoints/
 */.ipynb_checkpoints/*
+
+# Nested repo clones / temp builds
+Solvix/
+

@@ -20,8 +20,10 @@ echo [3/3] Starting React Dashboard on 0.0.0.0:5173...
 start "NowCast React Frontend" cmd /k "cd frontend && npm run dev"
 
 echo ===================================================
-echo   All 3 services are running across your network!
-echo   Local access:   http://localhost:5173
-echo   Network access: http://10.69.140.44:5173
+echo   All 3 services are running!
+echo   Dashboard: http://localhost:5173
+echo   API Docs:  http://localhost:8000/docs
+echo   For LAN/mobile access, run start_local_network.bat
 echo ===================================================
 pause
+
