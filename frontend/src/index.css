@@ -1,48 +1,110 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-/* ── Reset & base ──────────────────────────────────────────────────────────── */
+
+/* ── HUD Theme Variables ─────────────────────────────────────────────────── */
+:root {
+  --bg-primary: #0B101D;
+  --bg-surface: #161F33;
+  --bg-glass: rgba(15, 23, 42, 0.75);
+  --border-hud: rgba(51, 65, 85, 0.6);
+  --accent-green: #00E676;
+  --accent-red: #FF1744;
+  --accent-cyan: #00B0FF;
+  --accent-amber: #FFD600;
+}
+
+/* ── Reset & Base ────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
 html, body, #root {
   margin: 0; padding: 0;
   width: 100%; height: 100%;
-  background: #020617;
+  background: var(--bg-primary);
   color: #e2e8f0;
-  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-  font-size: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Monospace font utility for telemetry values */
+.font-mono-num {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* ── Futuristic HUD Glows & Glassmorphism ──────────────────────────────────── */
+.hud-panel {
+  background: rgba(22, 31, 51, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(51, 65, 85, 0.6);
+  box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+
+.hud-panel-cyan {
+  border-color: rgba(0, 176, 255, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 16px rgba(0, 176, 255, 0.12);
+}
+
+.hud-panel-alert {
+  border-color: rgba(255, 23, 68, 0.4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 20px rgba(255, 23, 68, 0.18);
+}
+
+.hud-glass-header {
+  background: rgba(11, 16, 29, 0.8);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(51, 65, 85, 0.5);
 }
 
 /* Fix leaflet tile background in dark mode */
-.leaflet-container { background: #0f172a !important; }
+.leaflet-container {
+  background: #070b14 !important;
+  font-family: inherit !important;
+}
 
 /* Hide scrollbar but keep scroll */
 .scrollbar-hide::-webkit-scrollbar { display: none; }
 .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* ── App shell ─────────────────────────────────────────────────────────────── */
-.app-root {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  overflow: hidden;
-  background: #020617;
+/* Thin HUD scrollbar */
+.hud-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.hud-scroll::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4);
+}
+.hud-scroll::-webkit-scrollbar-thumb {
+  background: rgba(51, 65, 85, 0.7);
+  border-radius: 2px;
+}
+.hud-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 176, 255, 0.6);
 }
 
-/* ── Header ────────────────────────────────────────────────────────────────── */
-.app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 20px;
-  height: 56px;
-  background: #0f172a;
-  border-bottom: 1px solid #1e293b;
-  flex-shrink: 0;
-  z-index: 50;
+/* Micro-interaction pulses */
+@keyframes hud-ping {
+  75%, 100% {
+    transform: scale(2);
+    opacity: 0;
+  }
 }
+.hud-ping {
+  animation: hud-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes hud-radar-sweep {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.animate-radar-sweep {
+  animation: hud-radar-sweep 4s linear infinite;
+  transform-origin: center center;
+}
+
 
 .header-brand {
   display: flex;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   MapContainer,
   TileLayer,
@@ -6,23 +6,20 @@ import {
   Polygon,
   Tooltip,
   CircleMarker,
+  Circle,
   Popup,
   Rectangle,
   useMap,
 } from 'react-leaflet';
-import { Thermometer, Navigation, Droplets, Cpu } from 'lucide-react';
+import { ShieldAlert, MapPin } from 'lucide-react';
 import {
   ASSAM_BOUNDS,
   MASK_POSITIONS,
-  RAIN_LAYERS,
-  HAZARD_LAYERS,
-  CONFIDENCE,
+  CITY_NODES,
   WMO,
   wmoEmoji,
 } from '../constants/weather';
-import { LegendRain, LegendHazard } from './Legends';
 import LocationWeatherCard from './LocationWeatherCard';
-import StatCard from './StatCard';
 
 function FlyTo({ target, zoom }) {
   const map = useMap();
@@ -52,6 +49,7 @@ function LockToBounds({ bounds }) {
 export default function MapPanel({
   data,
   activeLayer,
+  basemapStyle = 'satellite',
   rvTileUrl,
   userLoc,
   localWeather,
@@ -60,272 +58,261 @@ export default function MapPanel({
   showLocCard,
   setShowLocCard,
 }) {
-  const [basemapStyle, setBasemapStyle] = useState('satellite');
-
-  const isRainLayer = RAIN_LAYERS.some((l) => l.key === activeLayer);
-  const activeRainCfg = RAIN_LAYERS.find((l) => l.key === activeLayer);
-  const activeHazCfg = HAZARD_LAYERS.find((l) => l.key === activeLayer);
-
   const overlayUrl = useMemo(() => data?.images?.[activeLayer], [data, activeLayer]);
 
   const activePolygons = useMemo(() => {
     if (!data) return [];
     if (activeLayer === 'cloudburst') {
-      return (data.cloudburst_polygons ?? []).map((p) => ({ ...p, color: '#ef4444' }));
+      return (data.cloudburst_polygons ?? []).map((p) => ({ ...p, color: '#FF1744' }));
     }
     if (activeLayer === 'lightning') {
-      return (data.lightning_polygons ?? []).map((p) => ({ ...p, color: '#f59e0b' }));
+      return (data.lightning_polygons ?? []).map((p) => ({ ...p, color: '#FFD600' }));
     }
     return [];
   }, [data, activeLayer]);
 
-  const atm = data?.atmospheric_context ?? {};
-
   return (
-    <main className="main-panel">
-      {/* Map sub-header */}
-      <div className="map-header">
-        <div className="map-header-left">
-          <span
-            className="map-layer-dot"
-            style={{ background: isRainLayer ? activeRainCfg?.color : activeHazCfg?.color }}
-          />
-          <span className="map-title">
-            {isRainLayer ? `Precipitation · ${activeRainCfg?.label}` : `${activeHazCfg?.label} Risk`}
-          </span>
-          {data?.is_live_radar ? (
-            <span
-              className="live-badge"
-              style={{ background: '#064e3b', borderColor: '#059669', color: '#34d399' }}
-            >
-              <span className="live-dot-anim" style={{ background: '#34d399' }} /> REAL LIVE RADAR
-            </span>
-          ) : rvTileUrl ? (
-            <span className="live-badge">
-              <span className="live-dot-anim" /> LIVE Radar
-            </span>
-          ) : null}
-        </div>
+    <div className="absolute inset-0 w-full h-full z-0 overflow-hidden bg-[#070b14]">
+      <MapContainer
+        bounds={ASSAM_BOUNDS}
+        boundsOptions={{ padding: [0, 0] }}
+        maxBounds={ASSAM_BOUNDS}
+        maxBoundsViscosity={1.0}
+        scrollWheelZoom
+        zoomControl={false}
+        className="w-full h-full"
+      >
+        <LockToBounds bounds={ASSAM_BOUNDS} />
+        {flyTarget && <FlyTo target={flyTarget} zoom={10} />}
 
-        <div className="map-caveat" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div
-            style={{
-              display: 'flex',
-              background: '#1e293b',
-              borderRadius: 6,
-              padding: 2,
-              gap: 2,
+        {/* ── High-Resolution Basemaps ── */}
+        {basemapStyle === 'satellite' ? (
+          <>
+            {/* Esri World Imagery */}
+            <TileLayer
+              key="sat-base"
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+              attribution='&copy; Esri, Maxar, Earthstar Geographics'
+              bounds={ASSAM_BOUNDS}
+              maxZoom={18}
+              maxNativeZoom={18}
+            />
+            {/* High contrast administrative boundaries & place labels */}
+            <TileLayer
+              key="sat-labels"
+              url="https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
+              attribution=""
+              bounds={ASSAM_BOUNDS}
+              maxZoom={18}
+              maxNativeZoom={18}
+              zIndex={150}
+              pane="shadowPane"
+              opacity={0.8}
+            />
+          </>
+        ) : (
+          /* Dark CartoDB Matter / Street Map */
+          <TileLayer
+            key="carto-dark"
+            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+            bounds={ASSAM_BOUNDS}
+            maxZoom={19}
+            maxNativeZoom={19}
+          />
+        )}
+
+        {/* ── High-Contrast Convective Monitoring Domain Bounding Box (Assam) ── */}
+        <Rectangle
+          bounds={ASSAM_BOUNDS}
+          pathOptions={{
+            color: '#00B0FF',
+            weight: 2.5,
+            fill: false,
+            opacity: 0.9,
+            dashArray: '6, 6',
+          }}
+        />
+
+        {/* ── Outer Domain Mask ── */}
+        <Polygon
+          positions={MASK_POSITIONS}
+          pathOptions={{
+            color: 'none',
+            fillColor: '#070b14',
+            fillOpacity: 0.92,
+          }}
+        />
+
+        {/* ── RainViewer Live Doppler Radar Sweep Overlay ── */}
+        {rvTileUrl && (
+          <TileLayer
+            key={rvTileUrl}
+            url={rvTileUrl}
+            attribution='Weather radar &copy; RainViewer'
+            bounds={ASSAM_BOUNDS}
+            maxNativeZoom={7}
+            maxZoom={18}
+            opacity={0.65}
+            zIndex={200}
+          />
+        )}
+
+        {/* ── NowCast Fusion Model Output (U-Net + ConvLSTM + PySTEPS) ── */}
+        {overlayUrl && (
+          <ImageOverlay
+            url={overlayUrl}
+            bounds={ASSAM_BOUNDS}
+            opacity={0.76}
+            zIndex={300}
+          />
+        )}
+
+        {/* ── IMD Doppler Weather Radar (DWR) Range Rings ── */}
+        {CITY_NODES.filter((c) => c.isDwr).map((dwr) => (
+          <React.Fragment key={`ring-${dwr.id}`}>
+            <Circle
+              center={dwr.coords}
+              radius={dwr.rangeMeters ?? 200000}
+              pathOptions={{
+                color: '#00E676',
+                weight: 1,
+                fill: true,
+                fillColor: '#00E676',
+                fillOpacity: 0.03,
+                dashArray: '4, 8',
+              }}
+            />
+            <Circle
+              center={dwr.coords}
+              radius={(dwr.rangeMeters ?? 200000) / 2}
+              pathOptions={{
+                color: '#00B0FF',
+                weight: 0.75,
+                fill: false,
+                dashArray: '2, 6',
+                opacity: 0.4,
+              }}
+            />
+          </React.Fragment>
+        ))}
+
+        {/* ── City & Radar Station Node Markers ── */}
+        {CITY_NODES.map((city) => (
+          <CircleMarker
+            key={`node-${city.id}`}
+            center={city.coords}
+            radius={city.isDwr ? 7 : 4.5}
+            pathOptions={{
+              color: city.isDwr ? '#00E676' : '#00B0FF',
+              fillColor: city.isDwr ? '#00E676' : '#161F33',
+              fillOpacity: 0.9,
+              weight: 2,
             }}
           >
-            {[
-              { id: 'satellite', label: 'Satellite' },
-              { id: 'streets', label: 'Streets' },
-            ].map((b) => (
-              <button
-                key={b.id}
-                onClick={() => setBasemapStyle(b.id)}
-                style={{
-                  background: basemapStyle === b.id ? '#3b82f6' : 'transparent',
-                  color: basemapStyle === b.id ? '#fff' : '#94a3b8',
-                  border: 'none',
-                  borderRadius: 4,
-                  padding: '2px 8px',
-                  fontSize: 10,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: 'background 0.15s',
-                }}
-              >
-                {b.label}
-              </button>
-            ))}
-          </div>
-          <span>{isRainLayer ? CONFIDENCE[activeLayer] : 'IMD threshold verified · +30 min lead'}</span>
-        </div>
-      </div>
-
-      {/* ── Leaflet Map ── */}
-      <div className="map-wrap">
-        <MapContainer
-          bounds={ASSAM_BOUNDS}
-          boundsOptions={{ padding: [0, 0] }}
-          maxBounds={ASSAM_BOUNDS}
-          maxBoundsViscosity={1.0}
-          scrollWheelZoom
-          className="map-container"
-          style={{ background: '#0f172a' }}
-        >
-          <LockToBounds bounds={ASSAM_BOUNDS} />
-          {flyTarget && <FlyTo target={flyTarget} zoom={10} />}
-
-          {/* Clean High-Resolution Basemaps */}
-          {basemapStyle === 'satellite' && (
-            <>
-              <TileLayer
-                key="sat-base"
-                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                attribution='&copy; <a href="https://www.esri.com/">Esri</a>, Earthstar Geographics'
-                bounds={ASSAM_BOUNDS}
-                maxZoom={18}
-                maxNativeZoom={18}
-              />
-              <TileLayer
-                key="sat-labels"
-                url="https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
-                attribution=""
-                bounds={ASSAM_BOUNDS}
-                maxZoom={18}
-                maxNativeZoom={18}
-                zIndex={150}
-                pane="shadowPane"
-              />
-            </>
-          )}
-
-          {basemapStyle === 'streets' && (
-            <TileLayer
-              key="streets"
-              url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              bounds={ASSAM_BOUNDS}
-              maxZoom={19}
-              maxNativeZoom={19}
-            />
-          )}
-
-          {/* Highlighted box boundary around Assam domain */}
-          <Rectangle
-            bounds={ASSAM_BOUNDS}
-            pathOptions={{ color: '#38bdf8', weight: 3, fill: false, opacity: 1.0 }}
-          />
-
-          {/* RainViewer Live Radar */}
-          {rvTileUrl && (
-            <TileLayer
-              key={rvTileUrl}
-              url={rvTileUrl}
-              attribution='Weather radar &copy; <a href="https://www.rainviewer.com/">RainViewer</a> (free, no API key)'
-              bounds={ASSAM_BOUNDS}
-              maxNativeZoom={7}
-              maxZoom={18}
-              opacity={0.65}
-              zIndex={200}
-            />
-          )}
-
-          {/* Mask outside Assam domain */}
-          <Polygon
-            positions={MASK_POSITIONS}
-            pathOptions={{ color: 'none', fillColor: '#0a0f1d', fillOpacity: 1.0 }}
-          />
-
-          {/* Nowcast model layer overlay */}
-          {overlayUrl && (
-            <ImageOverlay url={overlayUrl} bounds={ASSAM_BOUNDS} opacity={0.72} zIndex={300} />
-          )}
-
-          {/* Convective hazard polygons */}
-          {activePolygons.map((poly, i) => (
-            <Polygon
-              key={i}
-              positions={poly.bounds}
-              pathOptions={{ color: poly.color, weight: 2, fillColor: poly.color, fillOpacity: 0.2 }}
-            >
-              <Tooltip>
-                <strong>High Risk Zone</strong>
-                <br />
-                Risk: {(poly.risk * 100).toFixed(0)}%
-              </Tooltip>
-            </Polygon>
-          ))}
-
-          {/* Geolocation marker */}
-          {userLoc && (
-            <CircleMarker
-              center={[userLoc.lat, userLoc.lng]}
-              radius={10}
-              pathOptions={{ color: '#60a5fa', fillColor: '#3b82f6', fillOpacity: 0.9, weight: 3 }}
-            >
-              <Popup>
-                <div style={{ minWidth: 180 }}>
-                  <strong style={{ color: '#1e293b' }}>{locAddress ?? 'Your Location'}</strong>
-                  {localWeather && (
-                    <div style={{ marginTop: 6, fontSize: 12, color: '#334155' }}>
-                      <div>
-                        {wmoEmoji(localWeather.weather_code)} {WMO[localWeather.weather_code] ?? ''}
-                      </div>
-                      <div>🌡️ {localWeather.temperature_2m?.toFixed(1)}°C</div>
-                      <div>💧 Humidity: {localWeather.relative_humidity_2m?.toFixed(0)}%</div>
-                      <div>💨 Wind: {localWeather.wind_speed_10m?.toFixed(1)} m/s</div>
-                      <div>🌧️ Precip: {localWeather.precipitation?.toFixed(1)} mm</div>
+            <Tooltip direction="top" offset={[0, -8]} opacity={0.95}>
+              <div className="text-[11px] font-mono-num font-bold text-slate-100 bg-slate-950/90 px-2 py-1 rounded border border-slate-700">
+                <span className={city.isDwr ? 'text-emerald-400' : 'text-cyan-400'}>
+                  [{city.code}]
+                </span>{' '}
+                {city.name}
+                {city.isDwr && <span className="block text-[9px] text-slate-400 font-normal">{city.band}</span>}
+              </div>
+            </Tooltip>
+            <Popup>
+              <div className="p-1 min-w-[190px] font-mono-num text-slate-900">
+                <div className="flex items-center justify-between border-b pb-1 mb-1.5">
+                  <strong className="text-xs font-bold text-slate-900">{city.name}</strong>
+                  <span className={`text-[10px] px-1 py-0.5 rounded font-bold ${
+                    city.isDwr ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'
+                  }`}>
+                    {city.status}
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-600 space-y-1">
+                  <div>Station Code: <strong>{city.code}</strong></div>
+                  <div>Coords: {city.coords[0].toFixed(2)}°N, {city.coords[1].toFixed(2)}°E</div>
+                  <div>Elevation: {city.elevation}</div>
+                  {city.isDwr && (
+                    <div className="text-emerald-700 font-semibold pt-0.5">
+                      Operational Doppler Radar (IMD)
                     </div>
                   )}
                 </div>
-              </Popup>
-            </CircleMarker>
-          )}
-        </MapContainer>
+              </div>
+            </Popup>
+          </CircleMarker>
+        ))}
 
-        {/* Legend */}
-        <div className="map-legend">
-          {isRainLayer ? <LegendRain /> : <LegendHazard type={activeLayer} />}
-        </div>
+        {/* ── Convective Hazard Risk Polygons ── */}
+        {activePolygons.map((poly, i) => (
+          <Polygon
+            key={`poly-${i}`}
+            positions={poly.bounds}
+            pathOptions={{
+              color: poly.color,
+              weight: 2,
+              fillColor: poly.color,
+              fillOpacity: 0.25,
+            }}
+          >
+            <Tooltip opacity={0.95}>
+              <div className="text-xs font-mono-num bg-slate-950 p-2 rounded border border-red-500/50 text-white">
+                <strong className="text-red-400 flex items-center gap-1">
+                  <ShieldAlert size={13} /> Severe Hazard Zone
+                </strong>
+                <div className="mt-1">
+                  Calculated Risk: <span className="font-bold">{(poly.risk * 100).toFixed(0)}%</span>
+                </div>
+              </div>
+            </Tooltip>
+          </Polygon>
+        ))}
 
-        {/* User location weather card popup */}
-        {showLocCard && localWeather && (
-          <div className="loc-card-wrap">
-            <LocationWeatherCard
-              weather={localWeather}
-              address={locAddress}
-              onClose={() => setShowLocCard(false)}
-            />
-          </div>
+        {/* ── User Geolocation Marker ── */}
+        {userLoc && (
+          <CircleMarker
+            center={[userLoc.lat, userLoc.lng]}
+            radius={9}
+            pathOptions={{
+              color: '#00E676',
+              fillColor: '#00B0FF',
+              fillOpacity: 0.95,
+              weight: 2.5,
+            }}
+          >
+            <Popup>
+              <div className="p-1 min-w-[200px] text-slate-900">
+                <strong className="text-xs text-slate-900 flex items-center gap-1">
+                  <MapPin size={13} className="text-blue-600" />
+                  {locAddress ?? 'Your Location'}
+                </strong>
+                {localWeather && (
+                  <div className="mt-2 text-xs text-slate-700 space-y-0.5">
+                    <div>
+                      {wmoEmoji(localWeather.weather_code)} {WMO[localWeather.weather_code] ?? ''}
+                    </div>
+                    <div>Temp: <strong>{localWeather.temperature_2m?.toFixed(1)}°C</strong></div>
+                    <div>Humidity: <strong>{localWeather.relative_humidity_2m?.toFixed(0)}%</strong></div>
+                    <div>Wind: <strong>{localWeather.wind_speed_10m?.toFixed(1)} m/s</strong></div>
+                  </div>
+                )}
+              </div>
+            </Popup>
+          </CircleMarker>
         )}
-      </div>
+      </MapContainer>
 
-      {/* ── Atmospheric Context Telemetry Row ── */}
-      {atm.source && (
-        <div className="stats-row">
-          <StatCard
-            icon={Thermometer}
-            label="CAPE"
-            value={atm.cape?.toFixed(0) ?? '--'}
-            unit=" J/kg"
-            sub={
-              atm.cape > 2000
-                ? '🔴 Extreme instability'
-                : atm.cape > 1000
-                ? '🟡 Active convection'
-                : '🟢 Stable'
-            }
-            accent="#eab308"
-          />
-          <StatCard
-            icon={Navigation}
-            label="Wind"
-            value={atm.wind_speed?.toFixed(1) ?? '--'}
-            unit=" m/s"
-            sub={`${atm.wind_direction?.toFixed(0) ?? '--'}° · 10m AGL`}
-            accent="#38bdf8"
-          />
-          <StatCard
-            icon={Droplets}
-            label="Humidity"
-            value={atm.humidity?.toFixed(0) ?? '--'}
-            unit="%"
-            sub={atm.humidity >= 85 ? '🔵 High moisture' : '⚪ Normal moisture'}
-            accent="#22d3ee"
-          />
-          <StatCard
-            icon={Cpu}
-            label="Model"
-            value="U-Net + ConvLSTM"
-            unit=""
-            sub={`PySTEPS · ${atm.source === 'open-meteo' ? '🟢 Live atm.' : '🟡 Cached data'}`}
-            accent="#a78bfa"
+      {/* Floating Location Weather Popup Card */}
+      {showLocCard && localWeather && (
+        <div className="absolute top-20 right-4 z-[1001]">
+          <LocationWeatherCard
+            weather={localWeather}
+            address={locAddress}
+            onClose={() => setShowLocCard(false)}
           />
         </div>
       )}
-    </main>
+    </div>
   );
 }
