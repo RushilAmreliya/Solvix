@@ -33,9 +33,10 @@ echo   Live Radar Stack is running!
 echo   Dashboard: http://localhost:5173
 echo   API Docs:  http://localhost:8000/docs
 echo.
-echo   For Wi-Fi/LAN access on phones, run: start_local_network.bat
+echo   For Wi-Fi/LAN access on phones, run: python scripts\launch_network.py
 echo   To simulate historical offline events, run: start_simulator.bat
 echo ===================================================
 pause
+
 
 
