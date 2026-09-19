@@ -24,7 +24,7 @@ from pydantic import BaseModel
 
 # Engine imports (single source of truth)
 from backend.engine.nowcast_model import UNetNowcast, SimpleNowcastCNN
-from backend.engine import pysteps_engine, hazard_engine, alert_engine, radar_loader
+from backend.engine import pysteps_engine, hazard_engine, alert_engine, radar_loader, live_radar_engine
 from backend.engine.openmeteo_engine import get_atmospheric_context
 from backend.engine.terrain_downscale import get_or_load_srtm
 from backend.engine.rendering import array_to_base64_img
@@ -82,12 +82,28 @@ async def lifespan(app: FastAPI):
             raw.shape,
             MAX_VAL,
         )
-        # Pre-seed buffer with initial frames so the first API call works
-        for i in range(min(settings.SEQ_IN, len(raw))):
-            frame_buffer.append(raw[i])
-        logger.info("Buffer pre-seeded with %d frames.", len(frame_buffer))
+        # Pre-seed buffer: prioritize genuine live radar sequence over historical dataset
+        try:
+            live_sync = live_radar_engine.sync_live_radar_into_buffer(
+                frame_buffer, min_frames=settings.SEQ_IN, force_refresh=True
+            )
+            if len(frame_buffer) >= settings.SEQ_IN:
+                logger.info("Buffer initialized with LIVE RADAR data: %s", live_sync)
+        except Exception as exc:
+            logger.warning("Live radar initial sync failed (%s); using fallback dataset.", exc)
+
+        if len(frame_buffer) < settings.SEQ_IN:
+            for i in range(min(settings.SEQ_IN, len(raw))):
+                frame_buffer.append(raw[i])
+            logger.info("Buffer pre-seeded with %d historical fallback frames.", len(frame_buffer))
     else:
-        logger.warning("Data file not found at %s. Start simulator to fill buffer.", data_path)
+        logger.warning("Data file not found at %s. Attempting live radar seed.", data_path)
+        try:
+            live_radar_engine.sync_live_radar_into_buffer(
+                frame_buffer, min_frames=settings.SEQ_IN, force_refresh=True
+            )
+        except Exception as exc:
+            logger.warning("Live radar seed failed: %s", exc)
 
     # Load trained U-Net / CNN model
     model_path = settings.MODEL_PATH
@@ -176,6 +192,12 @@ async def notify_websockets(message: dict) -> None:
 # ─── Forecast Computation Function ────────────────────────────────────────────
 def compute_latest_forecast() -> dict:
     """Compute the latest nowcast and hazard products from current buffer."""
+    # Attempt auto-sync with latest RainViewer live radar frame
+    try:
+        live_radar_engine.sync_live_radar_into_buffer(frame_buffer, min_frames=settings.SEQ_IN)
+    except Exception as exc:
+        logger.debug("Live radar incremental sync check failed: %s", exc)
+
     if len(frame_buffer) < settings.SEQ_IN:
         if fallback_dataset is not None:
             seed = fallback_dataset[: settings.SEQ_IN]
@@ -184,7 +206,7 @@ def compute_latest_forecast() -> dict:
         else:
             raise HTTPException(
                 status_code=503,
-                detail=f"Buffer has {len(frame_buffer)}/{settings.SEQ_IN} frames. Start the simulator.",
+                detail=f"Buffer has {len(frame_buffer)}/{settings.SEQ_IN} frames. Ingesting live radar...",
             )
 
     recent_frames = np.array(list(frame_buffer)[-settings.SEQ_IN :])  # (SEQ_IN, H, W)
@@ -267,6 +289,9 @@ def compute_latest_forecast() -> dict:
         "alerts": alert_engine.derive_alerts(hazards, atm_ctx, storm_cells, forecast_mm),
         "buffer_size": len(frame_buffer),
         "max_val": MAX_VAL,
+        "source": "live-radar" if live_radar_engine._last_ingested_timestamp > 0 else "simulator",
+        "radar_timestamp": live_radar_engine._last_ingested_timestamp,
+        "is_live_radar": live_radar_engine._last_ingested_timestamp > 0,
     }
 
 
@@ -398,6 +423,28 @@ async def ingest_radar_sweep(payload: RadarSweepPayload) -> dict:
     except Exception as exc:
         logger.error("Radar sweep ingestion failed: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post(
+    "/api/v1/ingest/sync-live-radar",
+    tags=["Ingest"],
+    summary="Synchronize live radar from RainViewer and recompute nowcast",
+)
+async def sync_live_radar_endpoint() -> dict:
+    """
+    Fetch the latest live Doppler radar sweeps from RainViewer covering Assam,
+    update the frame buffer with live observations, and broadcast the recomputed forecast.
+    """
+    try:
+        sync_res = live_radar_engine.sync_live_radar_into_buffer(
+            frame_buffer, min_frames=settings.SEQ_IN, force_refresh=True
+        )
+        forecast = compute_latest_forecast()
+        asyncio.create_task(notify_websockets({"type": "forecast", "data": forecast}))
+        return {"status": "ok", "sync": sync_res, "forecast": forecast}
+    except Exception as exc:
+        logger.error("Live radar sync failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Live radar sync failed: {exc}") from exc
 
 
 @app.get(

@@ -256,3 +256,51 @@ def test_rain_weighted_loss_penalizes_rain_errors():
     assert loss_rain > loss_dry
 
 
+# ─── 5. Live Radar Ingestion & Real-Time Sync Tests ───────────────────────────
+
+def test_live_radar_rgba_to_rain_rate():
+    """Verify live radar RGBA tile conversion to Marshall-Palmer rain rates."""
+    from backend.engine.live_radar_engine import rgba_to_rain_rate, get_assam_tile_ranges
+
+    # 1. Check tile range covering Assam at zoom 6
+    ranges = get_assam_tile_ranges(zoom=6)
+    assert ranges["x_start"] == 47
+    assert ranges["x_end"] == 49
+    assert ranges["y_start"] == 26
+    assert ranges["y_end"] == 27
+
+    # 2. Test transparent pixels (no radar echo)
+    blank_tile = np.zeros((10, 10, 4), dtype=np.uint8)
+    rain = rgba_to_rain_rate(blank_tile)
+    assert np.all(rain == 0.0)
+
+    # 3. Test colored radar echo (convective core)
+    storm_tile = np.zeros((10, 10, 4), dtype=np.uint8)
+    storm_tile[3:7, 3:7] = [220, 30, 30, 255]  # Red convective storm cell
+    rain = rgba_to_rain_rate(storm_tile)
+    assert rain.shape == (10, 10)
+    assert np.all(rain[3:7, 3:7] > 5.0)  # Strong rain rate > 5 mm/hr
+    assert np.all(rain[0:2, 0:2] == 0.0)  # Background remains zero
+
+
+def test_api_sync_live_radar_endpoint():
+    """Verify POST /api/v1/ingest/sync-live-radar executes successfully."""
+    from fastapi.testclient import TestClient
+    from backend.main import app
+
+    with TestClient(app) as client:
+        # Mock network fetch or allow quick execution
+        resp = client.post("/api/v1/ingest/sync-live-radar")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "ok"
+        assert "sync" in data
+        assert "forecast" in data
+        fc = data["forecast"]
+        assert "images" in fc
+        assert "current" in fc["images"]
+        assert "alerts" in fc
+        assert "source" in fc
+
+
+

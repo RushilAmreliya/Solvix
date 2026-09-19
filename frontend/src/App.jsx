@@ -250,8 +250,28 @@ export default function App() {
   const [locating,       setLocating]       = useState(false);
   const [flyTarget,      setFlyTarget]      = useState(null);
   const [showLocCard,    setShowLocCard]    = useState(false);
+  const [syncingRadar,   setSyncingRadar]   = useState(false);
 
   const wsRef = useRef(null);
+
+  // ── Sync Live Radar explicitly ─────────────────────────────────────────────
+  const syncLiveRadar = useCallback(async () => {
+    setSyncingRadar(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/ingest/sync-live-radar`, { method: 'POST' });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.forecast) {
+          setData(json.forecast);
+          setLastUpdated(new Date().toLocaleTimeString());
+        }
+      }
+    } catch (e) {
+      console.error('Failed to sync live radar:', e);
+    } finally {
+      setSyncingRadar(false);
+    }
+  }, []);
 
   // ── RainViewer v3 manifest fetch ────────────────────────────────────────────
   const fetchRainViewer = useCallback(async () => {
@@ -466,6 +486,18 @@ export default function App() {
         </div>
 
         <div className="header-right">
+          {/* Sync Live Radar button */}
+          <button
+            className={`locate-btn${syncingRadar ? ' locating' : ''}`}
+            onClick={syncLiveRadar}
+            title="Fetch & analyze newest live radar sweep from RainViewer"
+            disabled={syncingRadar}
+            style={{ background: '#064e3b', borderColor: '#059669', color: '#34d399' }}
+          >
+            <Radio size={13} className={syncingRadar ? 'pulse' : ''} />
+            {syncingRadar ? 'Syncing Radar…' : 'Sync Live Radar'}
+          </button>
+
           {/* Locate-me button */}
           <button
             className={`locate-btn${locating ? ' locating' : ''}`}
@@ -473,13 +505,22 @@ export default function App() {
             title="Get my location & local weather"
             disabled={locating}
           >
-            <LocateFixed size={14}/>
+            <LocateFixed size={13}/>
             {locating ? 'Locating…' : 'My Location'}
           </button>
 
-          <div className="conn-status" style={{ borderColor:connStatus.color+'55' }}>
-            <ConnIcon size={13} style={{ color:connStatus.color }}/>
-            <span style={{ color:connStatus.color, fontSize:12 }}>{connStatus.label}</span>
+          <div className="conn-status" style={{ borderColor: data?.is_live_radar ? '#10b98166' : connStatus.color+'55' }}>
+            {data?.is_live_radar ? (
+              <>
+                <span className="live-dot-anim" style={{ background: '#34d399' }} />
+                <span style={{ color: '#34d399', fontSize: 11, fontWeight: 700 }}>LIVE RADAR</span>
+              </>
+            ) : (
+              <>
+                <ConnIcon size={13} style={{ color:connStatus.color }}/>
+                <span style={{ color:connStatus.color, fontSize: 12 }}>{connStatus.label}</span>
+              </>
+            )}
           </div>
           {lastUpdated && (
             <div className="update-time">
@@ -533,19 +574,22 @@ export default function App() {
 
           {/* Buffer */}
           <div className="buffer-card">
-            <div className="buffer-label">Frame Buffer</div>
+            <div className="buffer-label">{data.source === 'live-radar' ? 'Live Radar Buffer' : 'Frame Buffer'}</div>
             <div className="buffer-value">{data.buffer_size}</div>
-            <div className="buffer-sub">frames cached</div>
+            <div className="buffer-sub">{data.source === 'live-radar' ? 'Live sweeps cached' : 'frames cached'}</div>
             <div className="buffer-bar">
               <div className="buffer-fill"
-                style={{ width:`${Math.min(100,(data.buffer_size/20)*100)}%` }}/>
+                style={{ width:`${Math.min(100,(data.buffer_size/20)*100)}%`, background: data.source === 'live-radar' ? 'linear-gradient(to right, #10b981, #06b6d4)' : undefined }}/>
+            </div>
+            <div style={{ marginTop: 6, fontSize: 9, color: data.source === 'live-radar' ? '#34d399' : '#94a3b8', fontWeight: 600 }}>
+              {data.source === 'live-radar' ? '● Real-Time Feed' : '○ Simulation Feed'}
             </div>
           </div>
 
           {/* RainViewer timestamp info */}
           {rvDisplayTime && (
             <div className="rv-info">
-              <Radio size={10} color="#60a5fa"/>
+              <Radio size={10} color="#34d399"/>
               <span>Live radar: {rvDisplayTime}</span>
             </div>
           )}
@@ -568,11 +612,15 @@ export default function App() {
                   ? `Precipitation · ${activeRainCfg?.label}`
                   : `${activeHazCfg?.label} Risk`}
               </span>
-              {rvTileUrl && (
+              {data?.is_live_radar ? (
+                <span className="live-badge" style={{ background: '#064e3b', borderColor: '#059669', color: '#34d399' }}>
+                  <span className="live-dot-anim" style={{ background: '#34d399' }}/> REAL LIVE RADAR
+                </span>
+              ) : rvTileUrl ? (
                 <span className="live-badge">
                   <span className="live-dot-anim"/> LIVE Radar
                 </span>
-              )}
+              ) : null}
             </div>
             <div className="map-caveat">
               {isRainLayer ? CONFIDENCE[activeLayer] : 'IMD threshold verified · +30 min lead'}
