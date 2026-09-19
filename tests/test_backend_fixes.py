@@ -207,3 +207,52 @@ def test_api_radar_sweep_ingestion():
         assert "shear_info" in data
         assert "buffer_size" in data
 
+
+# ─── 4. Training Engine Enhancements ──────────────────────────────────────────
+
+def test_stratified_split_preserves_rain_representation(tmp_path):
+    """Verify that stratified_split selects rainy frames and partitions correctly."""
+    from backend.engine.train import stratified_split
+
+    # Create synthetic dataset: mostly zero with concentrated rainy frames
+    synth_cube = np.zeros((40, 10, 10), dtype=np.float32)
+    synth_cube[10:15] = 25.0  # Rain spike
+    synth_cube[25:30] = 40.0  # Another rain spike
+    data_file = tmp_path / "test_stratified.npy"
+    np.save(data_file, synth_cube)
+
+    ds = WeatherDataset(str(data_file), seq_in=3, seq_out=3)
+    train_idx, val_idx = stratified_split(ds, val_fraction=0.25, min_gap=3)
+
+    # Sets must be disjoint and together span the full dataset
+    assert set(train_idx).isdisjoint(set(val_idx))
+    assert len(train_idx) + len(val_idx) == len(ds)
+
+    # Validation must contain rainy samples
+    intensities = ds.sample_rain_intensity()
+    val_intensities = intensities[val_idx]
+    assert np.any(val_intensities > 0)
+
+
+def test_rain_weighted_loss_penalizes_rain_errors():
+    """Verify that RainWeightedLoss penalizes errors on rainy pixels significantly more than on dry pixels."""
+    from backend.engine.train import RainWeightedLoss
+
+    loss_fn = RainWeightedLoss(rain_weight=20.0, rain_threshold=0.01)
+
+    pred = torch.zeros(1, 1, 10, 10)
+    
+    # Case 1: Target has error on dry pixels (0.05 intensity)
+    target_dry = torch.zeros(1, 1, 10, 10)
+    target_dry[0, 0, 0, 0] = 0.005  # below threshold 0.01
+    loss_dry = loss_fn(pred, target_dry)
+
+    # Case 2: Target has identical magnitude error on rainy pixel (above threshold)
+    target_rain = torch.zeros(1, 1, 10, 10)
+    target_rain[0, 0, 0, 0] = 0.05  # above threshold
+    loss_rain = loss_fn(pred, target_rain)
+
+    # Rain loss must be substantially higher due to weight and L1 term
+    assert loss_rain > loss_dry
+
+

@@ -14,3 +14,6 @@ _netrc
 
 # Intermediate data chunks
 data/*_chunk_*.npy
+
+# Logs
+*.log
